@@ -42,3 +42,11 @@ build
 # TypeScript
 *.tsbuildinfo
 next-env.d.ts
+
+# Supabase
+supabase/.temp
+supabase/.branches
+
+# Supabase
+supabase/.temp
+supabase/.branches

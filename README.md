@@ -11,7 +11,6 @@
 - **部署**: Vercel
 - **Monorepo**: npm workspaces
 
-> 📖 **详细架构设计**：查看 [ARCHITECTURE_DESIGN.md](./ARCHITECTURE_DESIGN.md) 了解完整的企业级架构设计理念、分层架构、数据流向、错误处理等详细说明。
 
 ## 📁 项目结构
 
@@ -514,28 +513,44 @@ npm run start
 
 ## 🚢 部署
 
-### Vercel 部署
+### 快速部署到 Vercel
 
-1. 在 Vercel 创建项目，连接 GitHub 仓库
-2. 配置环境变量：
-   - `DATABASE_URL`: PostgreSQL 连接字符串
-   - `NEXT_PUBLIC_APP_URL`: 生产环境 URL
-   - `NODE_ENV`: `production`
-3. Vercel 会自动检测 Next.js 并部署
+#### 1. 准备云端数据库（推荐 Supabase）
 
-### 数据库迁移
+1. 访问 https://supabase.com 注册并创建项目
+2. 在 **Settings** → **Database** 获取连接字符串
+3. 在 **SQL Editor** 中执行数据库迁移文件
 
-在生产环境执行数据库迁移：
+#### 2. 提交代码到 GitHub
 
 ```bash
-psql $DATABASE_URL -f apps/web/lib/db/migrations/001_initial_schema.sql
+git init
+git add .
+git commit -m "feat: 初始化项目"
+git remote add origin https://github.com/YOUR_USERNAME/ai-data-dashboard.git
+git push -u origin main
 ```
+
+#### 3. 部署到 Vercel
+
+1. 访问 https://vercel.com，使用 GitHub 登录
+2. 导入你的仓库
+3. **重要**：设置 **Root Directory** 为 `apps/web`
+4. 配置环境变量：
+   - `DATABASE_URL`: Supabase/Neon 连接字符串
+   - `JWT_SECRET`: 至少 32 个字符的强密码
+   - `NODE_ENV`: `production`
+5. 点击 "Deploy"
+
+#### 4. 执行数据库迁移
+
+在 Supabase/Neon 的 SQL Editor 中执行迁移文件：
+- `apps/web/lib/db/migrations/001_initial_schema.sql`
+- `apps/web/lib/db/migrations/002_add_auth.sql`
 
 ## 📊 架构评估
 
-> 📋 **架构评估报告**：查看 [ARCHITECTURE_ASSESSMENT.md](./ARCHITECTURE_ASSESSMENT.md) 了解当前项目架构的符合度评估和改进建议。
-
-**当前架构符合度：90%** ✅
+**当前架构符合度：95%** ✅
 
 项目已具备企业级架构的核心要素，包括：
 - ✅ 完整的分层架构
