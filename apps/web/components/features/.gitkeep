@@ -1,0 +1,8 @@
+# 功能组件目录
+# 在此目录下按业务模块组织功能组件
+# 例如：
+# features/
+#   ├── users/
+#   │   └── UserCard.tsx
+#   └── posts/
+#       └── PostList.tsx

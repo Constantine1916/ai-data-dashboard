@@ -11,6 +11,8 @@
 - **部署**: Vercel
 - **Monorepo**: npm workspaces
 
+> 📖 **详细架构设计**：查看 [ARCHITECTURE_DESIGN.md](./ARCHITECTURE_DESIGN.md) 了解完整的企业级架构设计理念、分层架构、数据流向、错误处理等详细说明。
+
 ## 📁 项目结构
 
 ```
@@ -528,6 +530,20 @@ npm run start
 ```bash
 psql $DATABASE_URL -f apps/web/lib/db/migrations/001_initial_schema.sql
 ```
+
+## 📊 架构评估
+
+> 📋 **架构评估报告**：查看 [ARCHITECTURE_ASSESSMENT.md](./ARCHITECTURE_ASSESSMENT.md) 了解当前项目架构的符合度评估和改进建议。
+
+**当前架构符合度：90%** ✅
+
+项目已具备企业级架构的核心要素，包括：
+- ✅ 完整的分层架构
+- ✅ 类型安全系统
+- ✅ 统一的错误处理
+- ✅ 数据库连接池管理
+- ✅ Monorepo 结构
+- ✅ 错误边界和错误页面
 
 ## 📚 参考资源
 
