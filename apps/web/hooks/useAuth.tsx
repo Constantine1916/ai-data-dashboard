@@ -11,6 +11,7 @@ interface AuthContextType {
   register: (email: string, password: string, name: string) => Promise<void>
   logout: () => Promise<void>
   refreshUser: () => Promise<void>
+  refreshToken: () => Promise<boolean>
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
@@ -52,25 +53,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // 获取当前用户信息
   const fetchUser = async () => {
-    const token = getToken()
-    if (!token) {
-      setLoading(false)
-      return
-    }
-
+    // Cookie 是 HttpOnly 的，前端无法直接读取
+    // 所以直接调用 API，API 会从 Cookie 中读取 token
     try {
       const response = await fetch('/api/auth/me', {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
+        credentials: 'include', // 重要：包含 cookie
       })
 
       const data = await response.json()
 
       if (data.success && data.data) {
         setUser(data.data)
+        // 如果响应中有 token（向后兼容），也保存到 localStorage
+        if (data.data.token) {
+          setToken(data.data.token)
+        }
+
+        // 检查响应头，看 token 是否已自动刷新
+        const tokenRefreshed = response.headers.get('X-Token-Refreshed')
+        if (tokenRefreshed === 'true') {
+          console.log('Token 已自动刷新')
+        }
       } else {
-        // Token 无效，清除
+        // Token 无效或已过期，清除本地存储
         removeToken()
         setUser(null)
       }
@@ -80,6 +85,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(null)
     } finally {
       setLoading(false)
+    }
+  }
+
+  // 手动刷新 Token（可选，用于主动刷新）
+  const refreshToken = async () => {
+    try {
+      const response = await fetch('/api/auth/refresh', {
+        method: 'POST',
+        credentials: 'include', // 重要：包含 cookie
+      })
+
+      const data = await response.json()
+
+      if (data.success && data.data) {
+        setUser(data.data.user)
+        // 如果响应中有 token（向后兼容），也保存到 localStorage
+        if (data.data.token) {
+          setToken(data.data.token)
+        }
+        return true
+      }
+      return false
+    } catch (error) {
+      console.error('刷新 Token 失败:', error)
+      return false
     }
   }
 
@@ -95,6 +125,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       headers: {
         'Content-Type': 'application/json',
       },
+      credentials: 'include', // 重要：包含 cookie
       body: JSON.stringify({ email, password }),
     })
 
@@ -104,8 +135,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       throw new Error(data.error?.message || '登录失败')
     }
 
-    // 保存 Token
-    setToken(data.data.token)
+    // Token 已自动存储到 Cookie（HttpOnly）
+    // 如果响应中有 token（向后兼容），也保存到 localStorage
+    if (data.data.token) {
+      setToken(data.data.token)
+    }
     setUser(data.data.user)
 
     // 跳转到首页或仪表板
@@ -119,6 +153,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       headers: {
         'Content-Type': 'application/json',
       },
+      credentials: 'include', // 重要：包含 cookie
       body: JSON.stringify({ email, password, name }),
     })
 
@@ -128,8 +163,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       throw new Error(data.error?.message || '注册失败')
     }
 
-    // 保存 Token
-    setToken(data.data.token)
+    // Token 已自动存储到 Cookie（HttpOnly）
+    // 如果响应中有 token（向后兼容），也保存到 localStorage
+    if (data.data.token) {
+      setToken(data.data.token)
+    }
     setUser(data.data.user)
 
     // 跳转到首页或仪表板
@@ -141,6 +179,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       await fetch('/api/auth/logout', {
         method: 'POST',
+        credentials: 'include', // 重要：包含 cookie
       })
     } catch (error) {
       console.error('登出请求失败:', error)
@@ -166,6 +205,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         register,
         logout,
         refreshUser,
+        refreshToken,
       }}
     >
       {children}

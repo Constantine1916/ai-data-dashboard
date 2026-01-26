@@ -46,44 +46,74 @@ export function generateToken(user: User): string {
 
 /**
  * 验证 JWT Token
+ * 返回 payload 或 null（如果 token 无效或已过期）
  */
 export function verifyToken(token: string): {
   id: string
   email: string
   role: string
+  exp?: number
+  iat?: number
 } | null {
   try {
-    return jwt.verify(token, JWT_SECRET) as {
+    const payload = jwt.verify(token, JWT_SECRET) as {
       id: string
       email: string
       role: string
+      exp?: number
+      iat?: number
     }
+    return payload
   } catch (error) {
+    // Token 无效或已过期
     return null
   }
 }
 
 /**
+ * 检查 Token 是否即将过期（在 7 天内过期）
+ * 用于实现自动刷新机制
+ */
+export function isTokenExpiringSoon(token: string): boolean {
+  const payload = verifyToken(token)
+  if (!payload || !payload.exp) {
+    return true
+  }
+
+  const expirationTime = payload.exp * 1000 // 转换为毫秒
+  const now = Date.now()
+  const sevenDaysInMs = 7 * 24 * 60 * 60 * 1000
+
+  // 如果 token 在 7 天内过期，返回 true
+  return expirationTime - now < sevenDaysInMs
+}
+
+/**
  * 从请求中提取 Token
+ * 优先从 Cookie 读取，其次从 Authorization header 读取
  */
 export function extractTokenFromRequest(
   request: Request
 ): string | null {
-  // 从 Authorization header 中提取
-  const authHeader = request.headers.get('authorization')
-  if (authHeader?.startsWith('Bearer ')) {
-    return authHeader.substring(7)
-  }
-
-  // 从 Cookie 中提取（如果使用 Cookie）
+  // 优先从 Cookie 中提取（推荐方式）
   const cookieHeader = request.headers.get('cookie')
   if (cookieHeader) {
     const cookies = cookieHeader.split(';').reduce((acc, cookie) => {
       const [key, value] = cookie.trim().split('=')
-      acc[key] = value
+      if (key && value) {
+        acc[key] = decodeURIComponent(value)
+      }
       return acc
     }, {} as Record<string, string>)
-    return cookies['auth-token'] || null
+    if (cookies['auth-token']) {
+      return cookies['auth-token']
+    }
+  }
+
+  // 从 Authorization header 中提取（向后兼容）
+  const authHeader = request.headers.get('authorization')
+  if (authHeader?.startsWith('Bearer ')) {
+    return authHeader.substring(7)
   }
 
   return null

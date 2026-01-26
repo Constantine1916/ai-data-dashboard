@@ -1,7 +1,9 @@
+import { NextResponse } from 'next/server'
 import { createRouteHandler } from '@/lib/api/route-handler'
 import { createSuccessResponse, createErrorResponse } from '@ai-data-dashboard/shared'
 import { parseJsonBody } from '@/lib/api/middleware'
 import { hashPassword, generateToken } from '@/lib/auth'
+import { setAuthCookie } from '@/lib/auth/cookies'
 import { query } from '@/lib/db'
 import { supabase } from '@/lib/db/supabase'
 import { z } from 'zod'
@@ -109,8 +111,8 @@ export const POST = createRouteHandler({
       // 生成 Token
       const token = generateToken(user)
 
-      // 返回用户信息（不包含密码）
-      return Response.json(
+      // 创建响应
+      const response = NextResponse.json(
         createSuccessResponse({
           user: {
             id: user.id,
@@ -121,10 +123,16 @@ export const POST = createRouteHandler({
             createdAt: user.created_at,
             updatedAt: user.updated_at,
           },
+          // 仍然在响应体中返回 token（向后兼容，前端可以选择使用）
           token,
         }),
         { status: 201 }
       )
+
+      // 将 Token 存储到 Cookie（30 天过期）
+      setAuthCookie(response, token)
+
+      return response
     } catch (error) {
       if (error instanceof z.ZodError) {
         return Response.json(

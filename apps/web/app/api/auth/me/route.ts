@@ -1,3 +1,4 @@
+import { NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/auth/middleware'
 import { createSuccessResponse } from '@ai-data-dashboard/shared'
 import { query } from '@/lib/db'
@@ -33,7 +34,7 @@ export const GET = requireAuth(async (request, user) => {
   }
 
   if (users.length === 0) {
-    return Response.json(
+    return NextResponse.json(
       createSuccessResponse(null),
       { status: 404 }
     )
@@ -41,7 +42,8 @@ export const GET = requireAuth(async (request, user) => {
 
   const dbUser = users[0]
 
-  return Response.json(
+  // 使用 NextResponse 以便可以设置 cookie（如果 token 需要刷新）
+  return NextResponse.json(
     createSuccessResponse({
       id: dbUser.id,
       email: dbUser.email,
