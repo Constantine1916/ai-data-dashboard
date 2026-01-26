@@ -48,6 +48,15 @@ export async function query<T = unknown>(
     return res.rows as T[]
   } catch (error) {
     console.error('查询错误', { text, error })
+    // 提供更详细的错误信息
+    if (error instanceof Error) {
+      console.error('错误详情:', {
+        message: error.message,
+        code: (error as any).code,
+        detail: (error as any).detail,
+        hint: (error as any).hint,
+      })
+    }
     throw error
   }
 }

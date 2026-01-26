@@ -8,6 +8,28 @@ export function handleApiError(error: unknown): NextResponse {
   console.error('API 错误:', error)
 
   if (error instanceof Error) {
+    // 数据库连接错误
+    if (error.message.includes('getaddrinfo ENOTFOUND') || error.message.includes('ENOTFOUND')) {
+      return NextResponse.json(
+        createErrorResponse(
+          'DATABASE_CONNECTION_ERROR',
+          '无法连接到数据库。请检查 DATABASE_URL 环境变量配置是否正确，或确认数据库服务是否可用。'
+        ),
+        { status: HTTP_STATUS.INTERNAL_SERVER_ERROR }
+      )
+    }
+
+    // 数据库认证错误
+    if (error.message.includes('password authentication failed') || error.message.includes('authentication failed')) {
+      return NextResponse.json(
+        createErrorResponse(
+          'DATABASE_AUTH_ERROR',
+          '数据库认证失败。请检查数据库用户名和密码是否正确。'
+        ),
+        { status: HTTP_STATUS.INTERNAL_SERVER_ERROR }
+      )
+    }
+
     // 已知错误
     return NextResponse.json(
       createErrorResponse(ERROR_CODES.INTERNAL_ERROR, error.message),

@@ -3,6 +3,7 @@ import { createSuccessResponse, createErrorResponse } from '@ai-data-dashboard/s
 import { parseJsonBody } from '@/lib/api/middleware'
 import { verifyPassword, generateToken } from '@/lib/auth'
 import { query } from '@/lib/db'
+import { supabase } from '@/lib/db/supabase'
 import { z } from 'zod'
 import type { User } from '@/types/database'
 
@@ -19,11 +20,32 @@ export const POST = createRouteHandler({
       const body = await parseJsonBody(request)
       const validated = loginSchema.parse(body)
 
-      // 查找用户
-      const users = await query<User>(
-        'SELECT id, email, password_hash, name, role, email_verified, created_at, updated_at FROM users WHERE email = $1',
-        [validated.email]
-      )
+      // 尝试使用 Supabase 客户端（如果配置了 service_role key）
+      const useSupabase = !!process.env.SUPABASE_SERVICE_ROLE_KEY
+
+      let users: User[] = []
+
+      if (useSupabase) {
+        // 使用 Supabase REST API
+        const { data, error } = await supabase
+          .from('users')
+          .select('id, email, password_hash, name, role, email_verified, created_at, updated_at')
+          .eq('email', validated.email)
+          .limit(1)
+
+        if (error) {
+          console.error('Supabase 查询错误:', error)
+          throw error
+        }
+
+        users = (data || []) as User[]
+      } else {
+        // 使用直接 PostgreSQL 连接（如果可用）
+        users = await query<User>(
+          'SELECT id, email, password_hash, name, role, email_verified, created_at, updated_at FROM users WHERE email = $1',
+          [validated.email]
+        )
+      }
 
       if (users.length === 0) {
         return Response.json(
