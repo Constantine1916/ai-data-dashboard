@@ -9,7 +9,9 @@ const pool = config.database.url
       // 连接池配置
       max: 20, // 最大连接数
       idleTimeoutMillis: 30000, // 空闲连接超时
-      connectionTimeoutMillis: 2000, // 连接超时
+      connectionTimeoutMillis: 10000, // 连接超时增加到10秒
+      // Supabase 需要 SSL
+      ssl: config.isDevelopment ? { rejectUnauthorized: false } : true,
     })
   : null
 
