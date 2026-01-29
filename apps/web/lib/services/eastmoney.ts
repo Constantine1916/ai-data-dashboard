@@ -95,8 +95,12 @@ export class EastMoneyService {
       return 0
     }
 
-    // 找出连板天数最大值
-    const maxLimit = Math.max(...limitUpStocks.map((stock) => stock.f62 || 1))
+    // 找出连板天数最大值（过滤异常值，只取 0-50 范围）
+    const validLimits = limitUpStocks
+      .map((stock) => stock.f62 || 0)
+      .filter((v) => v >= 0 && v <= 50)
+    
+    const maxLimit = validLimits.length > 0 ? Math.max(...validLimits) : 0
     return maxLimit
   }
 

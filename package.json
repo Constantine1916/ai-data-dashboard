@@ -17,6 +17,7 @@
     "npm": ">=9.0.0"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.93.3",
     "dotenv": "^17.2.3"
   }
 }
