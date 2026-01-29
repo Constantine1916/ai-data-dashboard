@@ -16,14 +16,15 @@ export class MarketStatsService {
   static async saveDailyStats(date: string, stats: Omit<DailyMarketStats, 'id' | 'createdAt' | 'updatedAt' | 'statDate'>) {
     if (useSupabase) {
       // 使用 Supabase upsert
+      // 注意：确保 BIGINT 类型正确传递（转为字符串）
       const { data, error } = await supabase
         .from('daily_market_stats')
         .upsert({
           stat_date: date,
           limit_up_count: stats.limitUpCount,
           limit_down_count: stats.limitDownCount,
-          total_volume: stats.totalVolume,
-          total_amount: stats.totalAmount,
+          total_volume: String(stats.totalVolume), // BIGINT 需要字符串
+          total_amount: String(stats.totalAmount), // DECIMAL 也转字符串保持精度
           max_continuous_limit: stats.maxContinuousLimit,
           updated_at: new Date().toISOString(),
         }, {
