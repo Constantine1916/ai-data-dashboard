@@ -5,23 +5,20 @@ interface StatsCardProps {
   value: string
   change: string
   trend: 'up' | 'down'
-  icon: string
 }
 
-export function StatsCard({ title, value, change, trend, icon }: StatsCardProps) {
-  const trendColor = trend === 'up' ? 'text-green-600' : 'text-red-600'
-  const trendBg = trend === 'up' ? 'bg-green-50' : 'bg-red-50'
-
+export function StatsCard({ title, value, change, trend }: StatsCardProps) {
+  const isPositive = trend === 'up'
+  
   return (
-    <div className="bg-white rounded-2xl p-6 shadow-lg hover:shadow-xl transition-all hover:scale-105 border border-gray-100">
-      <div className="flex items-start justify-between mb-4">
-        <div className="text-4xl">{icon}</div>
-        <span className={`${trendBg} ${trendColor} text-sm font-semibold px-3 py-1 rounded-full`}>
+    <div className="bg-white border border-gray-200 rounded-lg p-5">
+      <div className="flex items-baseline justify-between mb-3">
+        <h3 className="text-sm font-medium text-gray-600">{title}</h3>
+        <span className={`text-xs font-medium ${isPositive ? 'text-green-700' : 'text-red-700'}`}>
           {change}
         </span>
       </div>
-      <h3 className="text-gray-600 text-sm font-medium mb-1">{title}</h3>
-      <p className="text-3xl font-bold text-gray-900">{value}</p>
+      <p className="text-2xl font-semibold text-gray-900">{value}</p>
     </div>
   )
 }
