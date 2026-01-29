@@ -1,18 +1,52 @@
 import { Pool } from 'pg'
 import { config } from '../config'
 
+// 解析 Supabase 连接字符串
+function parseSupabaseUrl(urlString: string) {
+  // 格式: postgresql://postgres.PROJECT_ID:PASSWORD@HOST:PORT/postgres
+  const url = new URL(urlString);
+  const username = url.username;
+  const password = decodeURIComponent(url.password);
+  const host = url.hostname;
+  const port = parseInt(url.port);
+  const database = url.pathname.slice(1); // 去掉开头的 /
+  
+  return { username, password, host, port, database };
+}
+
 // 创建数据库连接池
-// 注意：如果没有配置 DATABASE_URL，pool 将使用默认的本地连接
 const pool = config.database.url
-  ? new Pool({
-      connectionString: config.database.url,
-      // 连接池配置
-      max: 20, // 最大连接数
-      idleTimeoutMillis: 30000, // 空闲连接超时
-      connectionTimeoutMillis: 10000, // 连接超时增加到10秒
-      // Supabase 需要 SSL
-      ssl: config.isDevelopment ? { rejectUnauthorized: false } : true,
-    })
+  ? (() => {
+      try {
+        // 如果是 Supabase URL，解析后用配置对象
+        if (config.database.url.includes('supabase.com')) {
+          const { username, password, host, port, database } = parseSupabaseUrl(config.database.url);
+          return new Pool({
+            user: username,
+            password: password,
+            host: host,
+            port: port,
+            database: database,
+            max: 20,
+            idleTimeoutMillis: 30000,
+            connectionTimeoutMillis: 10000,
+            ssl: { rejectUnauthorized: false },
+          });
+        } else {
+          // 其他数据库用连接字符串
+          return new Pool({
+            connectionString: config.database.url,
+            max: 20,
+            idleTimeoutMillis: 30000,
+            connectionTimeoutMillis: 10000,
+            ssl: config.isDevelopment ? { rejectUnauthorized: false } : true,
+          });
+        }
+      } catch (e) {
+        console.error('数据库连接配置错误:', e);
+        return null;
+      }
+    })()
   : null
 
 // 监听连接错误
