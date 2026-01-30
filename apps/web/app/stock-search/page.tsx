@@ -1,7 +1,6 @@
 'use client'
 
 import { useState } from 'react'
-import { Button } from '@/components/ui/Button'
 
 interface StockData {
   code: string
@@ -42,7 +41,7 @@ export default function StockSearchPage() {
 
       setStockData(result.data)
     } catch (err: any) {
-      setError(err.message || '网络错误，请稍后重试')
+      setError('网络错误，请稍后重试')
     } finally {
       setLoading(false)
     }
@@ -54,170 +53,157 @@ export default function StockSearchPage() {
     }
   }
 
-  // 计算涨跌额
   const changeAmount = stockData ? stockData.now - stockData.yesterday : 0
   const isUp = changeAmount > 0
   const isDown = changeAmount < 0
 
   return (
-    <div className="min-h-screen bg-gray-50 py-8">
-      <div className="max-w-4xl mx-auto px-4">
-        {/* 标题 */}
-        <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">
-            📈 股票实时查询
-          </h1>
-          <p className="text-gray-600">
-            输入股票代码，查看实时行情数据
-          </p>
+    <div className="min-h-screen bg-[#f5f5f5]">
+      {/* 顶部导航栏 */}
+      <div className="bg-white border-b border-gray-200">
+        <div className="max-w-6xl mx-auto px-4 py-4">
+          <div className="flex items-center justify-between">
+            <h1 className="text-xl font-semibold text-gray-900">股票查询</h1>
+            <div className="text-sm text-gray-500">实时行情</div>
+          </div>
         </div>
+      </div>
 
-        {/* 搜索框 */}
-        <div className="bg-white rounded-lg shadow-md p-6 mb-6">
+      <div className="max-w-6xl mx-auto px-4 py-6">
+        {/* 搜索区域 */}
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-6">
           <div className="flex gap-3">
             <input
               type="text"
               value={code}
               onChange={(e) => setCode(e.target.value)}
               onKeyPress={handleKeyPress}
-              placeholder="输入股票代码，如：600519 或 SH600519"
-              className="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-lg"
+              placeholder="请输入股票代码，如 600519"
+              className="flex-1 px-4 py-2.5 border border-gray-300 rounded text-base focus:outline-none focus:border-blue-500 transition-colors"
               disabled={loading}
             />
-            <Button
+            <button
               onClick={handleSearch}
               disabled={loading}
-              className="px-8 py-3 text-lg"
+              className="px-6 py-2.5 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:bg-gray-400 transition-colors text-base font-medium"
             >
-              {loading ? '查询中...' : '搜索'}
-            </Button>
+              {loading ? '查询中' : '查询'}
+            </button>
           </div>
 
-          {/* 提示 */}
-          <div className="mt-3 text-sm text-gray-500">
-            <p>💡 支持格式：</p>
-            <ul className="ml-6 mt-1 space-y-1">
-              <li>• 仅数字：600519（自动识别交易所）</li>
-              <li>• 带前缀：SH600519（沪市）、SZ000001（深市）</li>
-            </ul>
+          {/* 快捷代码 */}
+          <div className="mt-4 flex flex-wrap gap-2">
+            {[
+              { code: '600519', name: '贵州茅台' },
+              { code: '000858', name: '五粮液' },
+              { code: '600036', name: '招商银行' },
+              { code: '000333', name: '美的集团' },
+            ].map((stock) => (
+              <button
+                key={stock.code}
+                onClick={() => {
+                  setCode(stock.code)
+                  setError('')
+                }}
+                className="px-3 py-1.5 text-sm border border-gray-300 rounded hover:border-blue-500 hover:text-blue-600 transition-colors"
+              >
+                {stock.name} {stock.code}
+              </button>
+            ))}
           </div>
         </div>
 
         {/* 错误提示 */}
         {error && (
-          <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
-            <p className="text-red-600">❌ {error}</p>
+          <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6 text-red-700">
+            {error}
           </div>
         )}
 
         {/* 股票数据展示 */}
         {stockData && (
-          <div className="bg-white rounded-lg shadow-md overflow-hidden">
-            {/* 股票标题 */}
-            <div className="bg-gradient-to-r from-blue-500 to-blue-600 text-white p-6">
-              <div className="flex items-center justify-between">
+          <div className="space-y-4">
+            {/* 股票标题卡片 */}
+            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+              <div className="flex items-baseline gap-3 mb-4">
+                <h2 className="text-2xl font-bold text-gray-900">{stockData.name}</h2>
+                <span className="text-base text-gray-500">{stockData.code}</span>
+              </div>
+
+              {/* 价格和涨跌 */}
+              <div className="grid grid-cols-2 gap-8">
                 <div>
-                  <h2 className="text-2xl font-bold mb-1">{stockData.name}</h2>
-                  <p className="text-blue-100">{stockData.code}</p>
-                </div>
-                <div className="text-right">
-                  <div className="text-xs text-blue-100 mb-1">
-                    数据来源: {stockData.source === 'netease' ? '网易财经' : '腾讯股票'}
+                  <div className="text-sm text-gray-500 mb-1">当前价</div>
+                  <div className={`text-4xl font-bold ${
+                    isUp ? 'text-red-600' : isDown ? 'text-green-600' : 'text-gray-900'
+                  }`}>
+                    {stockData.now.toFixed(2)}
                   </div>
-                  <div className="text-xs text-blue-100">
-                    更新时间: {new Date(stockData.timestamp).toLocaleString('zh-CN')}
+                </div>
+                <div>
+                  <div className="text-sm text-gray-500 mb-1">涨跌幅</div>
+                  <div className={`text-3xl font-bold ${
+                    isUp ? 'text-red-600' : isDown ? 'text-green-600' : 'text-gray-900'
+                  }`}>
+                    {isUp ? '+' : ''}{changeAmount.toFixed(2)} 
+                    <span className="text-2xl ml-2">
+                      {isUp ? '+' : ''}{stockData.percent.toFixed(2)}%
+                    </span>
                   </div>
                 </div>
               </div>
             </div>
 
-            {/* 主要数据 */}
-            <div className="p-6">
-              <div className="grid grid-cols-2 gap-6 mb-6">
-                {/* 当前价 */}
-                <div className="text-center">
-                  <p className="text-sm text-gray-500 mb-1">当前价</p>
-                  <p className={`text-4xl font-bold ${
-                    isUp ? 'text-red-500' : isDown ? 'text-green-500' : 'text-gray-900'
-                  }`}>
-                    ¥{stockData.now.toFixed(2)}
-                  </p>
+            {/* 详细数据卡片 */}
+            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+                <div className="border-r border-gray-200 pr-6 last:border-r-0">
+                  <div className="text-xs text-gray-500 mb-1">昨收</div>
+                  <div className="text-lg font-semibold text-gray-900">
+                    {stockData.yesterday.toFixed(2)}
+                  </div>
                 </div>
 
-                {/* 涨跌幅 */}
-                <div className="text-center">
-                  <p className="text-sm text-gray-500 mb-1">涨跌幅</p>
-                  <div className={`text-3xl font-bold ${
-                    isUp ? 'text-red-500' : isDown ? 'text-green-500' : 'text-gray-900'
-                  }`}>
-                    <div>{isUp ? '+' : ''}{changeAmount.toFixed(2)}</div>
-                    <div className="text-2xl">
-                      {isUp ? '+' : ''}{stockData.percent.toFixed(2)}%
-                    </div>
+                <div className="border-r border-gray-200 pr-6 md:border-r-0 md:pr-0">
+                  <div className="text-xs text-gray-500 mb-1">今开</div>
+                  <div className="text-lg font-semibold text-gray-900">
+                    {stockData.now.toFixed(2)}
+                  </div>
+                </div>
+
+                <div className="border-r border-gray-200 pr-6 last:border-r-0">
+                  <div className="text-xs text-gray-500 mb-1">最高</div>
+                  <div className="text-lg font-semibold text-red-600">
+                    {stockData.high.toFixed(2)}
+                  </div>
+                </div>
+
+                <div>
+                  <div className="text-xs text-gray-500 mb-1">最低</div>
+                  <div className="text-lg font-semibold text-green-600">
+                    {stockData.low.toFixed(2)}
                   </div>
                 </div>
               </div>
+            </div>
 
-              {/* 详细数据 */}
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 pt-6 border-t border-gray-200">
-                <div className="text-center">
-                  <p className="text-xs text-gray-500 mb-1">昨收</p>
-                  <p className="text-lg font-semibold text-gray-900">
-                    ¥{stockData.yesterday.toFixed(2)}
-                  </p>
-                </div>
-
-                <div className="text-center">
-                  <p className="text-xs text-gray-500 mb-1">最高</p>
-                  <p className="text-lg font-semibold text-red-500">
-                    ¥{stockData.high.toFixed(2)}
-                  </p>
-                </div>
-
-                <div className="text-center">
-                  <p className="text-xs text-gray-500 mb-1">最低</p>
-                  <p className="text-lg font-semibold text-green-500">
-                    ¥{stockData.low.toFixed(2)}
-                  </p>
-                </div>
-
-                <div className="text-center">
-                  <p className="text-xs text-gray-500 mb-1">振幅</p>
-                  <p className="text-lg font-semibold text-gray-900">
-                    {((stockData.high - stockData.low) / stockData.yesterday * 100).toFixed(2)}%
-                  </p>
-                </div>
-              </div>
+            {/* 数据来源 */}
+            <div className="text-xs text-gray-400 text-center">
+              数据来源：{stockData.source === 'netease' ? '网易财经' : '腾讯证券'} | 
+              更新时间：{new Date(stockData.timestamp).toLocaleTimeString('zh-CN')}
             </div>
           </div>
         )}
 
-        {/* 常用股票代码示例 */}
-        {!stockData && !error && (
-          <div className="bg-white rounded-lg shadow-md p-6">
-            <h3 className="text-lg font-semibold mb-4 text-gray-900">💡 常用股票代码</h3>
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-              {[
-                { code: '600519', name: '贵州茅台' },
-                { code: '000001', name: '平安银行' },
-                { code: '000858', name: '五粮液' },
-                { code: '600036', name: '招商银行' },
-                { code: '000333', name: '美的集团' },
-                { code: '601318', name: '中国平安' },
-              ].map((stock) => (
-                <button
-                  key={stock.code}
-                  onClick={() => {
-                    setCode(stock.code)
-                    setError('')
-                  }}
-                  className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-blue-50 hover:border-blue-500 transition-colors text-left"
-                >
-                  <div className="font-medium text-gray-900">{stock.name}</div>
-                  <div className="text-sm text-gray-500">{stock.code}</div>
-                </button>
-              ))}
+        {/* 空状态 */}
+        {!stockData && !error && !loading && (
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-12 text-center">
+            <div className="text-gray-400 mb-2">
+              <svg className="w-16 h-16 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+              </svg>
             </div>
+            <p className="text-gray-500">输入股票代码开始查询</p>
           </div>
         )}
       </div>
