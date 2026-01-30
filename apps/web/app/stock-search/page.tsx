@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 
 interface StockData {
   code: string
@@ -14,24 +14,83 @@ interface StockData {
   timestamp: string
 }
 
+interface Suggestion {
+  code: string
+  name: string
+  now: number
+  percent: number
+}
+
 export default function StockSearchPage() {
   const [code, setCode] = useState('')
   const [loading, setLoading] = useState(false)
   const [stockData, setStockData] = useState<StockData | null>(null)
   const [error, setError] = useState('')
+  const [suggestions, setSuggestions] = useState<Suggestion[]>([])
+  const [showSuggestions, setShowSuggestions] = useState(false)
+  const [suggestLoading, setSuggestLoading] = useState(false)
+  const inputRef = useRef<HTMLInputElement>(null)
+  const suggestRef = useRef<HTMLDivElement>(null)
 
-  const handleSearch = async () => {
-    if (!code.trim()) {
-      setError('请输入股票代码')
+  // 搜索建议防抖
+  useEffect(() => {
+    if (code.trim().length === 0) {
+      setSuggestions([])
+      setShowSuggestions(false)
+      return
+    }
+
+    const timer = setTimeout(async () => {
+      setSuggestLoading(true)
+      try {
+        const response = await fetch(`/api/stock/suggest?q=${encodeURIComponent(code.trim())}`)
+        const result = await response.json()
+        if (result.success && result.data) {
+          setSuggestions(result.data)
+          setShowSuggestions(result.data.length > 0)
+        }
+      } catch (err) {
+        console.error('获取建议失败:', err)
+      } finally {
+        setSuggestLoading(false)
+      }
+    }, 300)
+
+    return () => clearTimeout(timer)
+  }, [code])
+
+  // 点击外部关闭建议
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (
+        suggestRef.current &&
+        !suggestRef.current.contains(e.target as Node) &&
+        inputRef.current &&
+        !inputRef.current.contains(e.target as Node)
+      ) {
+        setShowSuggestions(false)
+      }
+    }
+
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
+  const handleSearch = async (searchCode?: string) => {
+    const queryCode = searchCode || code
+    
+    if (!queryCode.trim()) {
+      setError('请输入股票代码或名称')
       return
     }
 
     setLoading(true)
     setError('')
     setStockData(null)
+    setShowSuggestions(false)
 
     try {
-      const response = await fetch(`/api/stock/search?code=${encodeURIComponent(code.trim())}`)
+      const response = await fetch(`/api/stock/search?code=${encodeURIComponent(queryCode.trim())}`)
       const result = await response.json()
 
       if (!result.success) {
@@ -45,6 +104,12 @@ export default function StockSearchPage() {
     } finally {
       setLoading(false)
     }
+  }
+
+  const handleSelectSuggestion = (suggestion: Suggestion) => {
+    setCode(suggestion.code)
+    setShowSuggestions(false)
+    handleSearch(suggestion.code)
   }
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
@@ -72,23 +137,76 @@ export default function StockSearchPage() {
       <div className="max-w-6xl mx-auto px-4 py-6">
         {/* 搜索区域 */}
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-6">
-          <div className="flex gap-3">
-            <input
-              type="text"
-              value={code}
-              onChange={(e) => setCode(e.target.value)}
-              onKeyPress={handleKeyPress}
-              placeholder="请输入股票代码，如 600519"
-              className="flex-1 px-4 py-2.5 border border-gray-300 rounded text-base focus:outline-none focus:border-blue-500 transition-colors"
-              disabled={loading}
-            />
-            <button
-              onClick={handleSearch}
-              disabled={loading}
-              className="px-6 py-2.5 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:bg-gray-400 transition-colors text-base font-medium"
-            >
-              {loading ? '查询中' : '查询'}
-            </button>
+          <div className="relative">
+            <div className="flex gap-3">
+              <div className="flex-1 relative">
+                <input
+                  ref={inputRef}
+                  type="text"
+                  value={code}
+                  onChange={(e) => setCode(e.target.value)}
+                  onKeyPress={handleKeyPress}
+                  onFocus={() => suggestions.length > 0 && setShowSuggestions(true)}
+                  placeholder="输入股票代码或名称，如 600519 或 茅台"
+                  className="w-full px-4 py-2.5 border border-gray-300 rounded text-base focus:outline-none focus:border-blue-500 transition-colors"
+                  disabled={loading}
+                />
+                
+                {/* 搜索建议下拉 */}
+                {showSuggestions && suggestions.length > 0 && (
+                  <div
+                    ref={suggestRef}
+                    className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-80 overflow-y-auto"
+                  >
+                    {suggestions.map((suggestion, index) => (
+                      <div
+                        key={suggestion.code + index}
+                        onClick={() => handleSelectSuggestion(suggestion)}
+                        className="px-4 py-3 hover:bg-gray-50 cursor-pointer border-b border-gray-100 last:border-b-0"
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex-1">
+                            <div className="font-medium text-gray-900">{suggestion.name}</div>
+                            <div className="text-sm text-gray-500">{suggestion.code}</div>
+                          </div>
+                          {suggestion.now > 0 && (
+                            <div className="text-right ml-4">
+                              <div className="font-semibold text-gray-900">
+                                {suggestion.now.toFixed(2)}
+                              </div>
+                              <div className={`text-sm ${
+                                suggestion.percent > 0 ? 'text-red-600' : 
+                                suggestion.percent < 0 ? 'text-green-600' : 'text-gray-500'
+                              }`}>
+                                {suggestion.percent > 0 ? '+' : ''}{suggestion.percent.toFixed(2)}%
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                
+                {/* 加载提示 */}
+                {suggestLoading && (
+                  <div className="absolute right-3 top-3 text-gray-400">
+                    <svg className="animate-spin h-5 w-5" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                  </div>
+                )}
+              </div>
+              
+              <button
+                onClick={() => handleSearch()}
+                disabled={loading}
+                className="px-6 py-2.5 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:bg-gray-400 transition-colors text-base font-medium"
+              >
+                {loading ? '查询中' : '查询'}
+              </button>
+            </div>
           </div>
 
           {/* 快捷代码 */}
@@ -104,6 +222,7 @@ export default function StockSearchPage() {
                 onClick={() => {
                   setCode(stock.code)
                   setError('')
+                  handleSearch(stock.code)
                 }}
                 className="px-3 py-1.5 text-sm border border-gray-300 rounded hover:border-blue-500 hover:text-blue-600 transition-colors"
               >
@@ -203,7 +322,8 @@ export default function StockSearchPage() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
               </svg>
             </div>
-            <p className="text-gray-500">输入股票代码开始查询</p>
+            <p className="text-gray-500">输入股票代码或名称开始查询</p>
+            <p className="text-sm text-gray-400 mt-2">支持中文名称搜索，如"茅台"</p>
           </div>
         )}
       </div>
