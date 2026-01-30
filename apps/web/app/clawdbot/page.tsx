@@ -1,4 +1,5 @@
 import type { Metadata } from 'next'
+import Link from 'next/link'
 
 export const metadata: Metadata = {
   title: 'Clawdbot 集成指南 - AI Data Dashboard',
@@ -27,7 +28,7 @@ export default function ClawdbotPage() {
       {/* Header */}
       <div className="border-b">
         <div className="container mx-auto px-4 py-4">
-          <a href="/" className="text-gray-600 hover:text-gray-900">← 返回首页</a>
+          <Link href="/" className="text-gray-600 hover:text-gray-900">← 返回首页</Link>
         </div>
       </div>
 
@@ -101,7 +102,7 @@ export default function ClawdbotPage() {
             <div className="border-l-4 border-green-500 pl-4">
               <h3 className="font-semibold mb-2">随手查询具体数据</h3>
               <p className="text-gray-700">
-                想看某个时间段的数据时，直接在 Telegram 里问一句"上周访问量多少"，
+                想看某个时间段的数据时，直接在 Telegram 里问一句&ldquo;上周访问量多少&rdquo;，
                 它会自动查数据库然后回复。比打开电脑登录后台快多了。
               </p>
             </div>
