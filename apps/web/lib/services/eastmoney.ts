@@ -7,7 +7,7 @@ const BASE_URL = 'https://push2.eastmoney.com/api/qt'
  */
 export class EastMoneyService {
   /**
-   * 获取股票列表
+   * 获取股票列表（支持分页获取全部）
    * @param page 页码
    * @param size 每页数量
    * @param sortBy 排序字段 (f3=涨跌幅)
@@ -15,7 +15,7 @@ export class EastMoneyService {
    */
   static async getStockList(
     page = 1,
-    size = 5000,
+    size = 500,
     sortBy = 'f3',
     order: 0 | 1 = 1
   ): Promise<EastMoneyStock[]> {
@@ -54,35 +54,80 @@ export class EastMoneyService {
   }
 
   /**
+   * 获取所有A股股票（分页获取全部）
+   */
+  static async getAllStocks(): Promise<EastMoneyStock[]> {
+    const pageSize = 500
+    const allStocks: EastMoneyStock[] = []
+    
+    // 先获取第一页，获取总数
+    const firstPage = await this.getStockList(1, pageSize, 'f3', 1)
+    allStocks.push(...firstPage)
+    
+    // 计算总页数（A股约5500只，按500/页需要12页）
+    const totalPages = Math.ceil(5600 / pageSize)
+    
+    // 并发获取剩余页（限制并发数避免被限流）
+    const batchSize = 3  // 每次并发3个请求
+    for (let i = 2; i <= totalPages; i += batchSize) {
+      const batch = []
+      for (let j = 0; j < batchSize && (i + j) <= totalPages; j++) {
+        batch.push(this.getStockList(i + j, pageSize, 'f3', 1))
+      }
+      
+      const results = await Promise.all(batch)
+      results.forEach(stocks => {
+        if (stocks.length > 0) {
+          allStocks.push(...stocks)
+        }
+      })
+      
+      // 避免请求过快，稍微延迟
+      if (i + batchSize <= totalPages) {
+        await new Promise(resolve => setTimeout(resolve, 100))
+      }
+    }
+    
+    console.log(`[EastMoney] 共获取 ${allStocks.length} 只股票`)
+    return allStocks
+  }
+
+  /**
    * 获取涨停股票列表（非ST）
    */
   static async getLimitUpStocks(): Promise<EastMoneyStock[]> {
-    const stocks = await this.getStockList(1, 5000, 'f3', 1)
+    const stocks = await this.getAllStocks()
 
     // 过滤涨停股票（涨幅 >= 9.9%，排除ST）
-    return stocks.filter(
+    const limitUpStocks = stocks.filter(
       (stock) =>
         stock.f3 >= 9.9 &&
         !stock.f14.includes('ST') &&
         !stock.f14.includes('*') &&
         !stock.f14.startsWith('N') // 排除新股
     )
+    
+    console.log(`[EastMoney] 涨停股票: ${limitUpStocks.length} 只`)
+    return limitUpStocks
   }
 
   /**
    * 获取跌停股票列表（非ST）
    */
   static async getLimitDownStocks(): Promise<EastMoneyStock[]> {
-    const stocks = await this.getStockList(1, 5000, 'f3', 0) // 降序排列
+    const stocks = await this.getAllStocks()
 
     // 过滤跌停股票（涨幅 <= -9.9%，排除ST）
-    return stocks.filter(
+    const limitDownStocks = stocks.filter(
       (stock) =>
         stock.f3 <= -9.9 &&
         !stock.f14.includes('ST') &&
         !stock.f14.includes('*') &&
         !stock.f14.startsWith('N')
     )
+    
+    console.log(`[EastMoney] 跌停股票: ${limitDownStocks.length} 只`)
+    return limitDownStocks
   }
 
   /**
@@ -101,6 +146,7 @@ export class EastMoneyService {
       .filter((v) => v >= 0 && v <= 50)
     
     const maxLimit = validLimits.length > 0 ? Math.max(...validLimits) : 0
+    console.log(`[EastMoney] 最高连板: ${maxLimit} 天`)
     return maxLimit
   }
 
@@ -108,11 +154,12 @@ export class EastMoneyService {
    * 获取市场总成交量和成交额
    */
   static async getMarketVolume(): Promise<{ volume: number; amount: number }> {
-    const stocks = await this.getStockList(1, 5000)
+    const stocks = await this.getAllStocks()
 
     const volume = stocks.reduce((sum, stock) => sum + (stock.f5 || 0), 0)
     const amount = stocks.reduce((sum, stock) => sum + (stock.f6 || 0), 0)
 
+    console.log(`[EastMoney] 总成交量: ${volume}, 总成交额: ${amount}`)
     return { volume, amount }
   }
 
@@ -157,21 +204,51 @@ export class EastMoneyService {
 
   /**
    * 收集今日所有市场数据（用于定时任务）
+   * 优化：只获取一次全部股票，避免重复请求
    */
   static async collectTodayStats() {
-    const [limitUpStocks, limitDownStocks, marketVolume, maxLimit] = await Promise.all([
-      this.getLimitUpStocks(),
-      this.getLimitDownStocks(),
-      this.getMarketVolume(),
-      this.getMaxContinuousLimit(),
-    ])
-
-    return {
+    console.log('[EastMoney] 开始采集市场数据...')
+    
+    // 一次性获取所有股票
+    const allStocks = await this.getAllStocks()
+    
+    // 过滤涨停
+    const limitUpStocks = allStocks.filter(
+      (stock) =>
+        stock.f3 >= 9.9 &&
+        !stock.f14.includes('ST') &&
+        !stock.f14.includes('*') &&
+        !stock.f14.startsWith('N')
+    )
+    
+    // 过滤跌停
+    const limitDownStocks = allStocks.filter(
+      (stock) =>
+        stock.f3 <= -9.9 &&
+        !stock.f14.includes('ST') &&
+        !stock.f14.includes('*') &&
+        !stock.f14.startsWith('N')
+    )
+    
+    // 计算最高连板
+    const validLimits = limitUpStocks
+      .map((stock) => stock.f62 || 0)
+      .filter((v) => v >= 0 && v <= 50)
+    const maxLimit = validLimits.length > 0 ? Math.max(...validLimits) : 0
+    
+    // 计算总成交量/额
+    const totalVolume = allStocks.reduce((sum, stock) => sum + (stock.f5 || 0), 0)
+    const totalAmount = allStocks.reduce((sum, stock) => sum + (stock.f6 || 0), 0)
+    
+    const result = {
       limitUpCount: limitUpStocks.length,
       limitDownCount: limitDownStocks.length,
-      totalVolume: marketVolume.volume,
-      totalAmount: marketVolume.amount,
+      totalVolume,
+      totalAmount,
       maxContinuousLimit: maxLimit,
     }
+    
+    console.log('[EastMoney] 采集完成:', result)
+    return result
   }
 }
