@@ -39,8 +39,8 @@ export function generateToken(user: User): string {
     },
     JWT_SECRET,
     {
-      expiresIn: JWT_EXPIRES_IN,
-    }
+      expiresIn: JWT_EXPIRES_IN as string,
+    } as jwt.SignOptions
   )
 }
 
