@@ -8,6 +8,7 @@ import { query } from '@/lib/db'
 import { supabase } from '@/lib/db/supabase'
 import { z } from 'zod'
 import type { User } from '@/types/database'
+import { type DbUser, mapDbUsersToUsers } from '@/lib/db/user-mapper'
 
 // 注册请求验证 Schema
 const registerSchema = z.object({
@@ -26,7 +27,7 @@ export const POST = createRouteHandler({
       // 尝试使用 Supabase 客户端（如果配置了 service_role key）
       const useSupabase = !!process.env.SUPABASE_SERVICE_ROLE_KEY
 
-      let existingUsers: User[] = []
+      let existingDbUsers: DbUser[] = []
       let result: User[] = []
 
       if (useSupabase) {
@@ -42,9 +43,9 @@ export const POST = createRouteHandler({
           throw existingError
         }
 
-        existingUsers = (existingData || []) as User[]
+        existingDbUsers = (existingData || []) as DbUser[]
 
-        if (existingUsers.length > 0) {
+        if (existingDbUsers.length > 0) {
           return Response.json(
             createErrorResponse('EMAIL_EXISTS', '该邮箱已被注册'),
             { status: 400 }
@@ -71,16 +72,16 @@ export const POST = createRouteHandler({
           throw insertError
         }
 
-        result = insertData ? [insertData as User] : []
+        result = insertData ? mapDbUsersToUsers([insertData as DbUser]) : []
       } else {
         // 使用直接 PostgreSQL 连接（如果可用）
         // 检查邮箱是否已存在
-        existingUsers = await query<User>(
+        existingDbUsers = await query<DbUser>(
           'SELECT id FROM users WHERE email = $1',
           [validated.email]
         )
 
-        if (existingUsers.length > 0) {
+        if (existingDbUsers.length > 0) {
           return Response.json(
             createErrorResponse('EMAIL_EXISTS', '该邮箱已被注册'),
             { status: 400 }
@@ -91,12 +92,13 @@ export const POST = createRouteHandler({
         const passwordHash = await hashPassword(validated.password)
 
         // 创建用户
-        result = await query<User>(
+        const dbResult = await query<DbUser>(
           `INSERT INTO users (email, password_hash, name, role) 
            VALUES ($1, $2, $3, 'user') 
            RETURNING id, email, name, role, email_verified, created_at, updated_at`,
           [validated.email, passwordHash, validated.name]
         )
+        result = mapDbUsersToUsers(dbResult)
       }
 
       if (result.length === 0) {
@@ -120,8 +122,8 @@ export const POST = createRouteHandler({
             name: user.name,
             role: user.role,
             email_verified: user.email_verified || false,
-            createdAt: user.created_at,
-            updatedAt: user.updated_at,
+            createdAt: user.createdAt,
+            updatedAt: user.updatedAt,
           },
           // 仍然在响应体中返回 token（向后兼容，前端可以选择使用）
           token,
