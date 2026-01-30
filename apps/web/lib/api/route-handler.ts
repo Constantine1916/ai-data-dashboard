@@ -9,7 +9,7 @@ type RouteContext = {
 
 type RouteHandler = (
   request: NextRequest,
-  context?: RouteContext
+  context: RouteContext
 ) => Promise<NextResponse> | NextResponse
 
 /**
@@ -26,7 +26,7 @@ export function createRouteHandler(
 ) {
   return async (
     request: NextRequest,
-    context?: RouteContext
+    context: RouteContext
   ): Promise<NextResponse> => {
     try {
       const method = request.method
