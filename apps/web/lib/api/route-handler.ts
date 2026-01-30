@@ -2,10 +2,15 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createSuccessResponse, createErrorResponse } from '@ai-data-dashboard/shared'
 import { handleApiError, validateMethod } from './middleware'
 
+// Next.js 15+ Route Context type
+type RouteContext = {
+  params: Promise<Record<string, string | string[]>>
+}
+
 type RouteHandler = (
   request: NextRequest,
-  context?: { params?: Record<string, string> }
-) => Promise<NextResponse>
+  context?: RouteContext
+) => Promise<NextResponse> | NextResponse
 
 /**
  * 创建 API 路由处理器包装器
@@ -21,7 +26,7 @@ export function createRouteHandler(
 ) {
   return async (
     request: NextRequest,
-    context?: { params?: Record<string, string> }
+    context?: RouteContext
   ): Promise<NextResponse> => {
     try {
       const method = request.method
