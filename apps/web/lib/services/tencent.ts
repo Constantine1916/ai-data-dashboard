@@ -6,6 +6,7 @@
  */
 
 const TENCENT_BASE_URL = 'https://qt.gtimg.cn/q'
+const TENCENT_BASE_IP = 'https://203.205.235.28/q'  // 使用 IP 绕过 DNS
 const TENCENT_SEARCH_URL = 'https://smartbox.gtimg.cn/s3/'
 const TIMEOUT_MS = 30000
 
@@ -41,20 +42,28 @@ export class TencentService {
   }
 
   /**
-   * 带超时的 fetch
+   * 带超时的 fetch（使用 IP + Host header 绕过 DNS 问题）
    */
-  private static async fetchWithTimeout(url: string): Promise<Response> {
+  private static async fetchWithTimeout(url: string, useIp = false): Promise<Response> {
     const controller = new AbortController()
     const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS)
     
     try {
-      const response = await fetch(url, {
+      const fetchUrl = useIp ? url.replace('qt.gtimg.cn', '203.205.235.28') : url
+      const headers: Record<string, string> = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'Accept': '*/*',
+        'Accept-Language': 'zh-CN,zh;q=0.9',
+      }
+      
+      // 使用 IP 时需要添加 Host header
+      if (useIp) {
+        headers['Host'] = 'qt.gtimg.cn'
+      }
+      
+      const response = await fetch(fetchUrl, {
         signal: controller.signal,
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-          'Accept': '*/*',
-          'Accept-Language': 'zh-CN,zh;q=0.9',
-        },
+        headers,
       })
       clearTimeout(timeoutId)
       return response
@@ -130,16 +139,28 @@ export class TencentService {
     const url = `${TENCENT_BASE_URL}=${normalizedCode}`
     
     try {
-      const response = await this.fetchWithTimeout(url)
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`)
+      // 优先使用域名，失败则使用 IP
+      try {
+        const response = await this.fetchWithTimeout(url, false)
+        if (!response.ok) throw new Error(`HTTP ${response.status}`)
+        
+        const buffer = await response.arrayBuffer()
+        const body = this.decodeGbk(buffer)
+        const row = body.trim()
+        
+        return this.parseStockRow(normalizedCode, row)
+      } catch (dnsError) {
+        // DNS 失败时使用 IP
+        console.warn(`[Tencent] DNS 失败，使用 IP: ${dnsError}`)
+        const response = await this.fetchWithTimeout(url, true)
+        if (!response.ok) throw new Error(`HTTP ${response.status}`)
+        
+        const buffer = await response.arrayBuffer()
+        const body = this.decodeGbk(buffer)
+        const row = body.trim()
+        
+        return this.parseStockRow(normalizedCode, row)
       }
-
-      const buffer = await response.arrayBuffer()
-      const body = this.decodeGbk(buffer)
-      const row = body.trim()
-
-      return this.parseStockRow(normalizedCode, row)
     } catch (error: any) {
       console.error(`[Tencent] 获取股票 ${code} 失败:`, error.message)
       return null
@@ -182,23 +203,37 @@ export class TencentService {
     const url = `${TENCENT_BASE_URL}=${normalizedCodes.join(',')}`
     
     try {
-      const response = await this.fetchWithTimeout(url)
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`)
+      // 优先使用域名，失败则使用 IP
+      try {
+        const response = await this.fetchWithTimeout(url, false)
+        if (!response.ok) throw new Error(`HTTP ${response.status}`)
+        
+        const buffer = await response.arrayBuffer()
+        const body = this.decodeGbk(buffer)
+        const rows = body.split(';').map(r => r.trim()).filter(r => r)
+
+        return normalizedCodes
+          .map((code, index) => {
+            const row = rows[index] || ''
+            return this.parseStockRow(code, row)
+          })
+          .filter((s): s is TencentStock => s !== null)
+      } catch (dnsError) {
+        console.warn(`[Tencent] DNS 失败，使用 IP`)
+        const response = await this.fetchWithTimeout(url, true)
+        if (!response.ok) throw new Error(`HTTP ${response.status}`)
+        
+        const buffer = await response.arrayBuffer()
+        const body = this.decodeGbk(buffer)
+        const rows = body.split(';').map(r => r.trim()).filter(r => r)
+
+        return normalizedCodes
+          .map((code, index) => {
+            const row = rows[index] || ''
+            return this.parseStockRow(code, row)
+          })
+          .filter((s): s is TencentStock => s !== null)
       }
-
-      const buffer = await response.arrayBuffer()
-      const body = this.decodeGbk(buffer)
-      
-      // 按 ; 分割多行
-      const rows = body.split(';').map(r => r.trim()).filter(r => r)
-
-      return normalizedCodes
-        .map((code, index) => {
-          const row = rows[index] || ''
-          return this.parseStockRow(code, row)
-        })
-        .filter((s): s is TencentStock => s !== null)
     } catch (error: any) {
       console.error('[Tencent] 批量获取股票失败:', error.message)
       return []
