@@ -50,7 +50,7 @@ export const POST = createRouteHandler({
       }
 
       if (users.length === 0) {
-        return Response.json(
+        return NextResponse.json(
           createErrorResponse('INVALID_CREDENTIALS', '邮箱或密码错误'),
           { status: 401 }
         )
@@ -60,7 +60,7 @@ export const POST = createRouteHandler({
 
       // 验证密码
       if (!user.password_hash) {
-        return Response.json(
+        return NextResponse.json(
           createErrorResponse('INVALID_CREDENTIALS', '邮箱或密码错误'),
           { status: 401 }
         )
@@ -72,7 +72,7 @@ export const POST = createRouteHandler({
       )
 
       if (!isValidPassword) {
-        return Response.json(
+        return NextResponse.json(
           createErrorResponse('INVALID_CREDENTIALS', '邮箱或密码错误'),
           { status: 401 }
         )
@@ -104,7 +104,7 @@ export const POST = createRouteHandler({
       return response
     } catch (error) {
       if (error instanceof z.ZodError) {
-        return Response.json(
+        return NextResponse.json(
           createErrorResponse(
             'VALIDATION_ERROR',
             error.errors[0].message,

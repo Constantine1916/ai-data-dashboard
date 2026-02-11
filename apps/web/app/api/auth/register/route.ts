@@ -45,7 +45,7 @@ export const POST = createRouteHandler({
         existingUsers = (existingData || []) as User[]
 
         if (existingUsers.length > 0) {
-          return Response.json(
+          return NextResponse.json(
             createErrorResponse('EMAIL_EXISTS', '该邮箱已被注册'),
             { status: 400 }
           )
@@ -81,7 +81,7 @@ export const POST = createRouteHandler({
         )
 
         if (existingUsers.length > 0) {
-          return Response.json(
+          return NextResponse.json(
             createErrorResponse('EMAIL_EXISTS', '该邮箱已被注册'),
             { status: 400 }
           )
@@ -100,7 +100,7 @@ export const POST = createRouteHandler({
       }
 
       if (result.length === 0) {
-        return Response.json(
+        return NextResponse.json(
           createErrorResponse('REGISTER_FAILED', '注册失败'),
           { status: 500 }
         )
@@ -135,7 +135,7 @@ export const POST = createRouteHandler({
       return response
     } catch (error) {
       if (error instanceof z.ZodError) {
-        return Response.json(
+        return NextResponse.json(
           createErrorResponse(
             'VALIDATION_ERROR',
             error.errors[0].message,
