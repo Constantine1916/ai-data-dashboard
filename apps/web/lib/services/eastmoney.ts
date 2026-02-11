@@ -1,11 +1,66 @@
 import type { EastMoneyResponse, EastMoneyStock, EastMoneyTopic } from '@/types/market'
 
 const BASE_URL = 'https://push2.eastmoney.com/api/qt'
+const TIMEOUT_MS = 30000 // 30秒超时
 
 /**
  * 东方财富API服务
  */
 export class EastMoneyService {
+  /**
+   * 带超时的 fetch
+   */
+  private static async fetchWithTimeout(url: string, options: RequestInit = {}): Promise<Response> {
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS)
+    
+    try {
+      const response = await fetch(url, {
+        ...options,
+        signal: controller.signal,
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+          'Accept': 'application/json',
+          'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+          ...options.headers,
+        },
+      })
+      clearTimeout(timeoutId)
+      return response
+    } catch (error: any) {
+      clearTimeout(timeoutId)
+      if (error.name === 'AbortError') {
+        throw new Error(`请求超时（${TIMEOUT_MS/1000}秒）: ${url}`)
+      }
+      throw error
+    }
+  }
+
+  /**
+   * 带重试的请求
+   */
+  private static async fetchWithRetry(url: string, options: RequestInit = {}, maxRetries = 3): Promise<Response> {
+    let lastError: Error | null = null
+    
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        return await this.fetchWithTimeout(url, options)
+      } catch (error: any) {
+        lastError = error
+        console.warn(`[EastMoney] 第${attempt}次请求失败: ${error.message}`)
+        
+        // 如果是超时或网络错误，等待后重试
+        if (attempt < maxRetries) {
+          const waitTime = attempt * 2000 // 指数退避: 2s, 4s
+          console.log(`[EastMoney] 等待${waitTime/1000}秒后重试...`)
+          await new Promise(resolve => setTimeout(resolve, waitTime))
+        }
+      }
+    }
+    
+    throw lastError || new Error('请求失败')
+  }
+
   /**
    * 获取股票列表
    * @param page 页码
@@ -33,24 +88,25 @@ export class EastMoneyService {
     })
 
     const url = `${BASE_URL}/clist/get?${params}`
-    const response = await fetch(url, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0',
-        Accept: 'application/json',
-      },
-    })
+    
+    try {
+      const response = await this.fetchWithRetry(url)
+      
+      if (!response.ok) {
+        throw new Error(`东方财富API请求失败: ${response.status} ${response.statusText}`)
+      }
 
-    if (!response.ok) {
-      throw new Error(`东方财富API请求失败: ${response.status}`)
+      const data: EastMoneyResponse<EastMoneyStock> = await response.json()
+
+      if (data.rc !== 0 || !data.data) {
+        throw new Error(`东方财富API返回数据异常: rc=${data.rc}, rs=${data.rs}`)
+      }
+
+      return data.data.diff || []
+    } catch (error: any) {
+      console.error('[EastMoney] 获取股票列表失败:', error.message)
+      throw new Error(`获取股票数据失败: ${error.message}`)
     }
-
-    const data: EastMoneyResponse<EastMoneyStock> = await response.json()
-
-    if (data.rc !== 0 || !data.data) {
-      throw new Error('东方财富API返回数据异常')
-    }
-
-    return data.data.diff || []
   }
 
   /**
@@ -135,24 +191,25 @@ export class EastMoneyService {
     })
 
     const url = `${BASE_URL}/clist/get?${params}`
-    const response = await fetch(url, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0',
-        Accept: 'application/json',
-      },
-    })
+    
+    try {
+      const response = await this.fetchWithRetry(url)
+      
+      if (!response.ok) {
+        throw new Error(`东方财富API请求失败: ${response.status} ${response.statusText}`)
+      }
 
-    if (!response.ok) {
-      throw new Error(`东方财富API请求失败: ${response.status}`)
+      const data: EastMoneyResponse<EastMoneyTopic> = await response.json()
+
+      if (data.rc !== 0 || !data.data) {
+        throw new Error(`东方财富API返回数据异常: rc=${data.rc}`)
+      }
+
+      return data.data.diff || []
+    } catch (error: any) {
+      console.error('[EastMoney] 获取题材排名失败:', error.message)
+      throw new Error(`获取题材数据失败: ${error.message}`)
     }
-
-    const data: EastMoneyResponse<EastMoneyTopic> = await response.json()
-
-    if (data.rc !== 0 || !data.data) {
-      throw new Error('东方财富API返回数据异常')
-    }
-
-    return data.data.diff || []
   }
 
   /**

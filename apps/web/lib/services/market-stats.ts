@@ -262,6 +262,7 @@ export class MarketStatsService {
 
   /**
    * 执行每日数据收集任务
+   * Vercel Serverless 最大执行时间有限制，需要优化超时
    */
   static async runDailyCollection() {
     const today = new Date().toISOString().split('T')[0]
@@ -269,13 +270,21 @@ export class MarketStatsService {
     console.log(`[MarketStats] 开始收集 ${today} 的市场数据...`)
 
     try {
-      // 1. 收集市场统计数据
-      const stats = await EastMoneyService.collectTodayStats()
+      // 1. 收集市场统计数据（带超时控制）
+      const statsPromise = EastMoneyService.collectTodayStats()
+      const statsTimeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('收集市场数据超时（45秒）')), 45000)
+      )
+      const stats = await Promise.race([statsPromise, statsTimeoutPromise]) as any
       await this.saveDailyStats(today, stats)
       console.log(`[MarketStats] 市场统计数据已保存:`, stats)
 
-      // 2. 收集题材涨幅数据
-      const topics = await EastMoneyService.getTopicRankings(50)
+      // 2. 收集题材涨幅数据（带超时控制）
+      const topicsPromise = EastMoneyService.getTopicRankings(50)
+      const topicsTimeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('收集题材数据超时（30秒）')), 30000)
+      )
+      const topics = await Promise.race([topicsPromise, topicsTimeoutPromise]) as EastMoneyTopic[]
       await this.saveTopicRankings(
         today,
         topics.map((t) => ({
@@ -287,14 +296,13 @@ export class MarketStatsService {
       )
       console.log(`[MarketStats] 题材涨幅数据已保存: ${topics.length} 条`)
 
-      // 3. 清理旧数据
-      await this.cleanOldData()
-      console.log(`[MarketStats] 已清理30天前的旧数据`)
+      // 3. 清理旧数据（异步，不阻塞主流程）
+      this.cleanOldData().catch(err => console.warn('[MarketStats] 清理旧数据失败:', err.message))
 
       return { success: true, date: today, stats }
-    } catch (error) {
+    } catch (error: any) {
       console.error(`[MarketStats] 数据收集失败:`, error)
-      throw error
+      throw new Error(`数据收集失败: ${error.message}`)
     }
   }
 
