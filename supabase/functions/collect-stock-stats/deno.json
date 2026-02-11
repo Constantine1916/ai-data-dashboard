@@ -1,0 +1,19 @@
+{
+  "id": "collect-stock-stats",
+  "name": "collect-stock-stats",
+  "version": "1.0.0",
+  "description": "收集A股市场统计数据（涨停、跌停等）",
+  "entrypoint": "index.ts",
+  "export": "serve",
+  "imports": {
+    "std": "https://deno.land/std@0.168.0",
+    "supabase": "https://esm.sh/@supabase/supabase-js@2"
+  },
+  "tasks": {
+    "start": "deno run -A --watch=static/,routes/ dev.ts"
+  },
+  "env": {
+    "SUPABASE_URL": "https://ekbjjkcuqqskraubogzl.supabase.co",
+    "SUPABASE_SERVICE_ROLE_KEY": "***"
+  }
+}
