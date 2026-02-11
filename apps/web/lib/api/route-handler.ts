@@ -4,7 +4,7 @@ import { handleApiError, validateMethod } from './middleware'
 
 type RouteHandler = (
   request: NextRequest,
-  context: Promise<{ params: Record<string, string> }>
+  context: any
 ) => Promise<NextResponse>
 
 /**
@@ -22,7 +22,7 @@ export function createRouteHandler(
 ) {
   return async (
     request: NextRequest,
-    context: Promise<{ params: Record<string, string> }>
+    context: any
   ): Promise<NextResponse> => {
     try {
       const method = request.method
