@@ -7,7 +7,7 @@ export const GET = createRouteHandler({
   GET: async (request: NextRequest) => {
     const dbHealthy = await healthCheck()
     
-    return Response.json(
+    return NextResponse.json(
       createSuccessResponse({
         status: 'ok',
         message: 'API is running',
