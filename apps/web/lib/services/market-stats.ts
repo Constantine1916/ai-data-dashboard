@@ -1,7 +1,7 @@
 import { query } from '@/lib/db'
 import { supabase } from '@/lib/db/supabase'
 import type { DailyMarketStats, TopicRanking } from '@/types/market'
-import { EastMoneyService } from './eastmoney'
+import { TencentService } from './tencent'
 
 // 优先使用 Supabase 客户端
 const useSupabase = !!process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -271,7 +271,7 @@ export class MarketStatsService {
 
     try {
       // 1. 收集市场统计数据（带超时控制）
-      const statsPromise = EastMoneyService.collectTodayStats()
+      const statsPromise = TencentService.collectTodayStats()
       const statsTimeoutPromise = new Promise((_, reject) => 
         setTimeout(() => reject(new Error('收集市场数据超时（45秒）')), 45000)
       )
@@ -279,24 +279,7 @@ export class MarketStatsService {
       await this.saveDailyStats(today, stats)
       console.log(`[MarketStats] 市场统计数据已保存:`, stats)
 
-      // 2. 收集题材涨幅数据（带超时控制）
-      const topicsPromise = EastMoneyService.getTopicRankings(50)
-      const topicsTimeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('收集题材数据超时（30秒）')), 30000)
-      )
-      const topics = await Promise.race([topicsPromise, topicsTimeoutPromise]) as EastMoneyTopic[]
-      await this.saveTopicRankings(
-        today,
-        topics.map((t) => ({
-          code: t.f12,
-          name: t.f14,
-          changePercent: t.f3,
-          closePrice: t.f2,
-        }))
-      )
-      console.log(`[MarketStats] 题材涨幅数据已保存: ${topics.length} 条`)
-
-      // 3. 清理旧数据（异步，不阻塞主流程）
+      // 2. 清理旧数据（异步，不阻塞主流程）
       this.cleanOldData().catch(err => console.warn('[MarketStats] 清理旧数据失败:', err.message))
 
       return { success: true, date: today, stats }
