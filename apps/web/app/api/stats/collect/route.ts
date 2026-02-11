@@ -1,18 +1,35 @@
 import { NextResponse } from 'next/server'
 import { createRouteHandler } from '@/lib/api/route-handler'
 import { createSuccessResponse, createErrorResponse } from '@ai-data-dashboard/shared'
-import { MarketStatsService } from '@/lib/services/market-stats'
+
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL ?? ''
+const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ?? ''
 
 /**
  * POST /api/stats/collect
- * 手动触发数据收集任务（也会被定时任务调用）
+ * 通过 Supabase Edge Function 收集数据
  */
 export const POST = createRouteHandler({
   POST: async () => {
     try {
-      const result = await MarketStatsService.runDailyCollection()
+      const response = await fetch(
+        `${SUPABASE_URL}/functions/v1/collect-stock-stats`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${SUPABASE_SERVICE_KEY}`,
+            'Content-Type': 'application/json',
+          },
+        }
+      )
 
-      return NextResponse.json(createSuccessResponse(result))
+      const data = await response.json()
+      
+      if (!response.ok) {
+        throw new Error(data.error?.message || '调用数据收集失败')
+      }
+
+      return NextResponse.json(data)
     } catch (error: any) {
       console.error('[API] 数据收集失败:', error)
       return NextResponse.json(
