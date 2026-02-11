@@ -17,6 +17,7 @@ export function MarketTrendChart({ title, dataKey, color = '#3b82f6', days = 30 
 
   useEffect(() => {
     fetchHistoryData()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [days])
 
   const fetchHistoryData = async () => {

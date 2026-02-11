@@ -120,8 +120,8 @@ export async function authenticate(
       name: user.name,
       role: user.role,
       email_verified: user.email_verified,
-      created_at: user.created_at || user.createdAt,
-      updated_at: user.updated_at || user.updatedAt,
+      createdAt: (user as any).created_at || user.createdAt || '',
+      updatedAt: (user as any).updated_at || user.updatedAt || '',
     } as User)
   }
 

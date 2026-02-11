@@ -6,6 +6,7 @@ import { setAuthCookie } from '@/lib/auth/cookies'
 import { query } from '@/lib/db'
 import { supabase } from '@/lib/db/supabase'
 import type { User } from '@/types/database'
+import { type DbUser, mapDbUsersToUsers } from '@/lib/db/user-mapper'
 
 /**
  * 刷新 Token API
@@ -35,7 +36,7 @@ export const POST = createRouteHandler({
 
       // 从数据库获取用户信息
       const useSupabase = !!process.env.SUPABASE_SERVICE_ROLE_KEY
-      let users: User[] = []
+      let dbUsers: DbUser[] = []
 
       if (useSupabase) {
         // 使用 Supabase REST API
@@ -53,14 +54,16 @@ export const POST = createRouteHandler({
           )
         }
 
-        users = (data || []) as User[]
+        dbUsers = (data || []) as DbUser[]
       } else {
         // 使用直接 PostgreSQL 连接（如果可用）
-        users = await query<User>(
+        dbUsers = await query<DbUser>(
           'SELECT id, email, name, role, email_verified, created_at, updated_at FROM users WHERE id = $1',
           [payload.id]
         )
       }
+
+      const users = mapDbUsersToUsers(dbUsers)
 
       if (users.length === 0) {
         return NextResponse.json(
@@ -83,8 +86,8 @@ export const POST = createRouteHandler({
             name: user.name,
             role: user.role,
             email_verified: user.email_verified || false,
-            createdAt: user.created_at,
-            updatedAt: user.updated_at,
+            createdAt: user.createdAt,
+            updatedAt: user.updatedAt,
           },
           token: newToken,
           refreshed: true,
