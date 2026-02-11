@@ -3,5 +3,11 @@
   "devCommand": "cd apps/web && npm run dev",
   "installCommand": "npm install",
   "framework": "nextjs",
-  "rootDirectory": "apps/web"
+  "rootDirectory": "apps/web",
+  "functions": {
+    "apps/web/app/api/**/*.ts": {
+      "maxDuration": 60
+    }
+  },
+  "crons": []
 }

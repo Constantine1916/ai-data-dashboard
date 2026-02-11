@@ -18,6 +18,7 @@
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.93.3",
-    "dotenv": "^17.2.3"
+    "dotenv": "^17.2.3",
+    "tushare": "^0.3.1"
   }
 }
