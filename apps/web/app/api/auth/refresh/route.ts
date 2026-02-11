@@ -12,7 +12,7 @@ import type { User } from '@/types/database'
  * 当 token 即将过期时，生成新的 token 并更新 cookie
  */
 export const POST = createRouteHandler({
-  POST: async (request) => {
+  POST: async (request, _context) => {
     try {
       // 从请求中提取当前 token
       const token = extractTokenFromRequest(request)

@@ -16,7 +16,7 @@ const loginSchema = z.object({
 })
 
 export const POST = createRouteHandler({
-  POST: async (request) => {
+  POST: async (request, _context) => {
     try {
       // 解析和验证请求体
       const body = await parseJsonBody(request)
