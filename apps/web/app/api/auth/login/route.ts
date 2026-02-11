@@ -8,6 +8,7 @@ import { query } from '@/lib/db'
 import { supabase } from '@/lib/db/supabase'
 import { z } from 'zod'
 import type { User } from '@/types/database'
+import { type DbUser, mapDbUsersToUsers } from '@/lib/db/user-mapper'
 
 // 登录请求验证 Schema
 const loginSchema = z.object({
@@ -27,6 +28,8 @@ export const POST = createRouteHandler({
 
       let users: User[] = []
 
+      let dbUsers: DbUser[] = []
+
       if (useSupabase) {
         // 使用 Supabase REST API
         const { data, error } = await supabase
@@ -40,14 +43,17 @@ export const POST = createRouteHandler({
           throw error
         }
 
-        users = (data || []) as User[]
+        dbUsers = (data || []) as DbUser[]
       } else {
         // 使用直接 PostgreSQL 连接（如果可用）
-        users = await query<User>(
+        dbUsers = await query<DbUser>(
           'SELECT id, email, password_hash, name, role, email_verified, created_at, updated_at FROM users WHERE email = $1',
           [validated.email]
         )
       }
+
+      // 转换数据库字段到 TypeScript 类型
+      users = mapDbUsersToUsers(dbUsers)
 
       if (users.length === 0) {
         return NextResponse.json(
@@ -90,8 +96,8 @@ export const POST = createRouteHandler({
             name: user.name,
             role: user.role,
             email_verified: user.email_verified || false,
-            createdAt: user.created_at,
-            updatedAt: user.updated_at,
+            createdAt: user.createdAt,
+            updatedAt: user.updatedAt,
           },
           // 仍然在响应体中返回 token（向后兼容，前端可以选择使用）
           token,
