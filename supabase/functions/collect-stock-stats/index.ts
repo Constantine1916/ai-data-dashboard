@@ -1,28 +1,37 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
-const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? ''
-const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-const supabase = createClient(supabaseUrl, supabaseKey)
+const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? ''
+const SUPABASE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+const supabase = createClient(SUPABASE_URL, SUPABASE_KEY)
 
-const TENCENT_API = 'https://qt.gtimg.cn/q'
-const TIMEOUT_MS = 60000
+const EASTMONEY_BASE_URL = 'https://push2.eastmoney.com/api/qt'
 
-interface Stock {
-  code: string
-  name: string
-  now: number
-  yesterday: number
-  percent: number
+interface EastMoneyStock {
+  f12: string  // 代码
+  f14: string  // 名称
+  f2: number   // 最新价
+  f3: number   // 涨跌幅
+  f5: number   // 成交量
+  f6: number   // 成交额
+  f62?: number // 连板天数
 }
 
-async function fetchStock(codes: string[]): Promise<Stock[]> {
-  const url = `${TENCENT_API}=${codes.join(',')}`
-  console.log(`请求: ${url}`)
+interface EastMoneyResponse<T> {
+  rc: number
+  data?: {
+    total: number
+    diff: T[]
+  } | null
+}
+
+// 东方财富API请求
+async function fetchEastMoney(params: string): Promise<EastMoneyStock[]> {
+  const url = `${EASTMONEY_BASE_URL}/clist/get?${params}`
+  console.log(`请求东方财富: ${url.substring(0, 100)}...`)
   
   try {
     const res = await fetch(url, {
-      signal: AbortSignal.timeout(TIMEOUT_MS),
       headers: { 'User-Agent': 'Mozilla/5.0' }
     })
     
@@ -31,89 +40,110 @@ async function fetchStock(codes: string[]): Promise<Stock[]> {
       return []
     }
     
-    const buffer = await res.arrayBuffer()
-    const text = new TextDecoder('gbk').decode(buffer)
-    console.log(`收到数据长度: ${text.length}`)
+    const data: EastMoneyResponse<EastMoneyStock> = await res.json()
     
-    const stocks: Stock[] = []
-    const rows = text.split(';').filter((r: string) => r.trim())
-    
-    for (const code of codes) {
-      const row = rows.find((r: string) => r.includes(code))
-      if (row) {
-        const match = row.match(new RegExp(`${code}=([^;]+)`))
-        if (match) {
-          const parts = match[1].replace(/^"|"$/g, '').split('~')
-          if (parts.length >= 5) {
-            const now = parseFloat(parts[3]) || 0
-            const yesterday = parseFloat(parts[4]) || 0
-            stocks.push({
-              code,
-              name: parts[1],
-              now,
-              yesterday,
-              percent: yesterday > 0 ? (now - yesterday) / yesterday : 0
-            })
-          }
-        }
-      }
+    if (data.rc !== 0 || !data.data) {
+      console.log(`API异常: rc=${data.rc}`)
+      return []
     }
     
-    console.log(`解析成功: ${stocks.length}/${codes.length}`)
-    return stocks
+    console.log(`获取到 ${data.data.diff?.length || 0} 只股票`)
+    return data.data.diff || []
   } catch (e: any) {
     console.log(`请求失败: ${e.message}`)
     return []
   }
 }
 
-async function getMarketStats() {
-  // 高成交额股票
-  const codes = [
-    // 上海大市值
-    'sh600519','sh601318','sh600036','sh601857','sh601288',
-    'sh600030','sh600016','sh600276','sh600111','sh601166',
-    'sh601398','sh601939','sh601988','sh601989','sh601006',
-    'sh600000','sh600015','sh600018','sh600019','sh600009',
-    // 深圳大市值
-    'sz000001','sz000002','sz000004','sz000005','sz000006',
-    'sz000007','sz000008','sz000009','sz000010','sz000011',
-    'sz000012','sz000013','sz000014','sz000015','sz000016',
-    'sz000017','sz000018','sz000019','sz000020','sz000021',
-    // 中小板+创业板
-    'sz002001','sz002002','sz002003','sz002004','sz002005',
-    'sz002006','sz002007','sz002008','sz002009','sz002010',
-    'sz002011','sz002012','sz002013','sz002014','sz002015',
-    'sz002016','sz002017','sz002018','sz002019','sz002020',
-    'sz300001','sz300002','sz300003','sz300004','sz300005',
-    'sz300006','sz300007','sz300008','sz300009','sz300010',
-    'sz300011','sz300012','sz300013','sz300014','sz300015',
-  ]
+// 获取涨停股票
+async function getLimitUpStocks(): Promise<EastMoneyStock[]> {
+  const params = new URLSearchParams({
+    pn: '1',
+    pz: '5000',
+    po: '1',  // 降序
+    np: '1',
+    ut: 'bd1d9ddb04089700cf9c27f6f7426281',
+    fltt: '2',
+    invt: '2',
+    fid: 'f3',
+    fs: 'm:0+t:6,m:0+t:80,m:1+t:2,m:1+t:23',
+    fields: 'f12,f14,f2,f3,f5,f6,f62',
+  })
   
-  console.log(`采样 ${codes.length} 只股票`)
-  const stocks = await fetchStock(codes)
+  const allStocks = await fetchEastMoney(params.toString())
   
-  // 统计
-  const limitUp = stocks.filter(s => 
-    s.percent >= 0.099 && 
-    !s.name.includes('ST') && 
-    !s.name.includes('*') &&
-    s.now > 0
+  // 过滤涨停（>=9.9%），排除ST、*、N开头
+  return allStocks.filter(s => 
+    s.f3 >= 9.9 &&
+    !s.f14.includes('ST') &&
+    !s.f14.includes('*') &&
+    !s.f14.startsWith('N')
   )
-  
-  const limitDown = stocks.filter(s => 
-    s.percent <= -0.099 && 
-    !s.name.includes('ST') && 
-    !s.name.includes('*') &&
-    s.now > 0
-  )
-  
-  console.log(`涨停: ${limitUp.length}, 跌停: ${limitDown.length}`)
-  console.log(`涨停股票: ${limitUp.map(s => `${s.code}(${s.name}:${(s.percent*100).toFixed(1)}%)`).join(', ')}`)
-  
-  return { limitUpCount: limitUp.length, limitDownCount: limitDown.length }
 }
 
+// 获取跌停股票
+async function getLimitDownStocks(): Promise<EastMoneyStock[]> {
+  const params = new URLSearchParams({
+    pn: '1',
+    pz: '5000',
+    po: '0',  // 升序
+    np: '1',
+    ut: 'bd1d9ddb04089700cf9c27f6f7426281',
+    fltt: '2',
+    invt: '2',
+    fid: 'f3',
+    fs: 'm:0+t:6,m:0+t:80,m:1+t:2,m:1+t:23',
+    fields: 'f12,f14,f2,f3,f5,f6',
+  })
+  
+  const allStocks = await fetchEastMoney(params.toString())
+  
+  // 过滤跌停（<=-9.9%），排除ST、*
+  return allStocks.filter(s => 
+    s.f3 <= -9.9 &&
+    !s.f14.includes('ST') &&
+    !s.f14.includes('*')
+  )
+}
+
+// 获取成交量和成交额
+async function getMarketVolume(): Promise<{ volume: number; amount: number }> {
+  const params = new URLSearchParams({
+    pn: '1',
+    pz: '5000',
+    po: '1',
+    np: '1',
+    ut: 'bd1d9ddb04089700cf9c27f6f7426281',
+    fltt: '2',
+    invt: '2',
+    fid: 'f3',
+    fs: 'm:0+t:6,m:0+t:80,m:1+t:2,m:1+t:23',
+    fields: 'f5,f6',
+  })
+  
+  const allStocks = await fetchEastMoney(params.toString())
+  
+  const volume = allStocks.reduce((sum, s) => sum + (s.f5 || 0), 0)
+  const amount = allStocks.reduce((sum, s) => sum + (s.f6 || 0), 0)
+  
+  return { volume, amount }
+}
+
+// 获取最高连板天数
+async function getMaxContinuousLimit(): Promise<number> {
+  const limitUp = await getLimitUpStocks()
+  
+  if (limitUp.length === 0) return 0
+  
+  // 取0-50范围的连板天数
+  const validLimits = limitUp
+    .map(s => s.f62 || 0)
+    .filter(v => v >= 0 && v <= 50)
+  
+  return validLimits.length > 0 ? Math.max(...validLimits) : 0
+}
+
+// 保存数据
 async function saveStats(date: string, stats: any) {
   const { error } = await supabase
     .from('daily_market_stats')
@@ -121,9 +151,9 @@ async function saveStats(date: string, stats: any) {
       stat_date: date,
       limit_up_count: stats.limitUpCount,
       limit_down_count: stats.limitDownCount,
-      total_volume: '0',
-      total_amount: '0',
-      max_continuous_limit: 0,
+      total_volume: String(stats.totalVolume),
+      total_amount: String(stats.totalAmount),
+      max_continuous_limit: stats.maxContinuousLimit,
       updated_at: new Date().toISOString(),
     }, { onConflict: 'stat_date' })
     .select()
@@ -142,16 +172,46 @@ serve(async (req: Request) => {
   if (req.method !== 'POST') return new Response(JSON.stringify({error:'Method not allowed'}), {status:405,headers})
   
   try {
-    console.log('=== 开始收集数据 ===')
+    console.log('=== 开始收集全量数据（东方财富API）===')
     const today = new Date().toISOString().split('T')[0]
-    const stats = await getMarketStats()
+    
+    // 并行获取所有数据
+    const [limitUpStocks, limitDownStocks, marketVolume, maxLimit] = await Promise.all([
+      getLimitUpStocks(),
+      getLimitDownStocks(),
+      getMarketVolume(),
+      getMaxContinuousLimit(),
+    ])
+    
+    const stats = {
+      limitUpCount: limitUpStocks.length,
+      limitDownCount: limitDownStocks.length,
+      totalVolume: marketVolume.volume,
+      totalAmount: marketVolume.amount,
+      maxContinuousLimit: maxLimit,
+    }
+    
+    // 保存到数据库
     await saveStats(today, stats)
     
     console.log(`=== 完成: 涨停${stats.limitUpCount}, 跌停${stats.limitDownCount} ===`)
+    console.log(`成交量: ${(stats.totalVolume/1e8).toFixed(2)}亿手, 成交额: ${(stats.totalAmount/1e8).toFixed(2)}亿`)
+    
+    // 返回涨停股票详情
+    const limitUpDetails = limitUpStocks.slice(0, 20).map(s => ({
+      code: s.f12,
+      name: s.f14,
+      percent: s.f3,
+      limitDays: s.f62 || 0
+    }))
     
     return new Response(JSON.stringify({
       success: true,
-      data: { success: true, date: today, stats }
+      data: {
+        date: today,
+        stats,
+        topLimitUp: limitUpDetails
+      }
     }), { headers })
   } catch (e: any) {
     console.log(`错误: ${e.message}`)
