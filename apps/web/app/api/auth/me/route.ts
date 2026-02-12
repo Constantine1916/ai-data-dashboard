@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/auth/middleware'
-import { createSuccessResponse } from '@ai-data-dashboard/shared'
+import { createSuccessResponse } from '@/lib/shared'
 import { query } from '@/lib/db'
 import { supabase } from '@/lib/db/supabase'
 import type { User } from '@/types/database'

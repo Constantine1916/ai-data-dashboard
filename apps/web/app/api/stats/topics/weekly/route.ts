@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createRouteHandler } from '@/lib/api/route-handler'
-import { createSuccessResponse, createErrorResponse } from '@ai-data-dashboard/shared'
+import { createSuccessResponse, createErrorResponse } from '@/lib/shared'
 import { MarketStatsService } from '@/lib/services/market-stats'
 
 /**

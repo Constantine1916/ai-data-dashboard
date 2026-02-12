@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createRouteHandler } from '@/lib/api/route-handler'
-import { createSuccessResponse, createErrorResponse } from '@ai-data-dashboard/shared'
+import { createSuccessResponse, createErrorResponse } from '@/lib/shared'
 import { parseJsonBody } from '@/lib/api/middleware'
 import { hashPassword, generateToken } from '@/lib/auth'
 import { setAuthCookie } from '@/lib/auth/cookies'

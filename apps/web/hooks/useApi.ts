@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useCallback } from 'react'
-import type { ApiResponse } from '@ai-data-dashboard/shared'
+import type { ApiResponse } from '@/lib/shared'
 
 interface UseApiOptions {
   onSuccess?: (data: unknown) => void

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createRouteHandler } from '@/lib/api/route-handler'
-import { createSuccessResponse } from '@ai-data-dashboard/shared'
+import { createSuccessResponse } from '@/lib/shared'
 import { clearAuthCookie } from '@/lib/auth/cookies'
 
 export const POST = createRouteHandler({

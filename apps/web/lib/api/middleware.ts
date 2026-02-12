@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createErrorResponse, ERROR_CODES, HTTP_STATUS } from '@ai-data-dashboard/shared'
+import { createErrorResponse, ERROR_CODES, HTTP_STATUS } from '@/lib/shared'
 
 /**
  * API 错误处理中间件

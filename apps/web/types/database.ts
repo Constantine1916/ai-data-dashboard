@@ -3,7 +3,7 @@
  * 这些类型应该与数据库 Schema 保持一致
  */
 
-import type { BaseEntity } from '@ai-data-dashboard/shared'
+import type { BaseEntity } from '@/lib/shared'
 
 export interface User extends BaseEntity {
   email: string

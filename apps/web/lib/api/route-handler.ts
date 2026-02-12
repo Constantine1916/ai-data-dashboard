@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createSuccessResponse, createErrorResponse } from '@ai-data-dashboard/shared'
+import { createSuccessResponse, createErrorResponse } from '@/lib/shared'
 import { handleApiError, validateMethod } from './middleware'
 
 type RouteHandler = (
