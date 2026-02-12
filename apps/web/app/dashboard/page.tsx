@@ -63,40 +63,18 @@ function DashboardContent() {
             <MarketOverview />
           </div>
 
-          {/* 趋势图 - 2列布局 */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+          {/* 趋势图 - 涨跌停对比 */}
+          <div className="mb-6">
             <MarketTrendChart
-              title="涨停数量趋势"
-              dataKey="limitUpCount"
-              color="#ef4444"
-              data={historyData}
-              loading={loading}
-            />
-            <MarketTrendChart
-              title="市场成交额趋势"
-              dataKey="totalAmount"
-              color="#3b82f6"
+              title="涨跌停对比"
+              showBoth={true}
               data={historyData}
               loading={loading}
             />
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-            <MarketTrendChart
-              title="最高连板趋势"
-              dataKey="maxContinuousLimit"
-              color="#8b5cf6"
-              data={historyData}
-              loading={loading}
-            />
-            <MarketTrendChart
-              title="跌停数量趋势"
-              dataKey="limitDownCount"
-              color="#10b981"
-              data={historyData}
-              loading={loading}
-            />
-          </div>
+          {/* 连板趋势 */}
+          <div className="mb-6">
 
           {/* 题材涨幅榜单 */}
           <div className="mb-6">
