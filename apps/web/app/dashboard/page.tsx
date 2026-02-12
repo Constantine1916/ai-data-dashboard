@@ -4,6 +4,7 @@ import { AuthGuard } from '@/components/auth/AuthGuard'
 import { useAuth } from '@/hooks/useAuth'
 import { Button } from '@/components/ui/Button'
 import { MarketOverview } from '@/components/dashboard/MarketOverview'
+import { MarketIndices } from '@/components/dashboard/MarketIndices'
 import { MarketTrendChart } from '@/components/dashboard/MarketTrendChart'
 import { TopicRankings } from '@/components/dashboard/TopicRankings'
 
@@ -29,6 +30,11 @@ function DashboardContent() {
             </div>
           </div>
 
+          {/* 大A指数 */}
+          <div className="mb-6">
+            <MarketIndices />
+          </div>
+
           {/* 市场概览卡片 */}
           <div className="mb-6">
             <MarketOverview />
@@ -40,11 +46,13 @@ function DashboardContent() {
               title="涨停数量趋势"
               dataKey="limitUpCount"
               color="#ef4444"
+              days={7}
             />
             <MarketTrendChart
               title="市场成交额趋势"
               dataKey="totalAmount"
               color="#3b82f6"
+              days={7}
             />
           </div>
 
@@ -53,11 +61,13 @@ function DashboardContent() {
               title="最高连板趋势"
               dataKey="maxContinuousLimit"
               color="#8b5cf6"
+              days={7}
             />
             <MarketTrendChart
               title="跌停数量趋势"
               dataKey="limitDownCount"
               color="#10b981"
+              days={7}
             />
           </div>
 
