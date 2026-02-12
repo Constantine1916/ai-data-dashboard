@@ -1,11 +1,11 @@
 /**
- * A股市场数据采集 - 使用AKShare
+ * A股市场数据采集 - 使用AKShare + 东方财富
  * 
  * 功能：
  * 1. 采集近7日涨跌停数据
- * 2. 采集题材强度排行
- * 3. 采集连板股票
- * 4. 采集市场成交额
+ * 2. 采集涨停股票成交额
+ * 3. 采集题材强度排行
+ * 4. 采集连板股票
  */
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
@@ -21,6 +21,7 @@ interface LimitUpStock {
   percent: number
   price: number
   limitDays: number
+  amount: number
   industry?: string
 }
 
@@ -30,6 +31,7 @@ interface LimitDownStock {
   percent: number
   price: number
   limitDays: number
+  amount: number
   industry?: string
 }
 
@@ -49,53 +51,59 @@ interface DailyStats {
   maxContinuousLimit: number
 }
 
-// 获取涨停股票
-async function fetchLimitUp(date: string): Promise<LimitUpStock[]> {
-  const url = `https://push2.eastmoney.com/api/qt/stock/ztlist/get?pn=1&pz=500&po=1&np=1&fltt=2&invt=2&fid=f3&fs=m:0+t:6,m:0+t:80,m:1+t:2,m:1+t:23&fields=f12,f14,f2,f3,f62,f8`
+// 获取涨停股票（东方财富API）
+async function fetchLimitUp(date: string): Promise<{ stocks: LimitUpStock[], totalAmount: number }> {
+  const url = `https://push2.eastmoney.com/api/qt/stock/ztlist/get?pn=1&pz=500&po=1&np=1&fltt=2&invt=2&fid=f3&fs=m:0+t:6,m:0+t:80,m:1+t:2,m:1+t:23&fields=f12,f14,f2,f3,f62,f8,f6`
   
   try {
     const res = await fetch(url)
     const data = await res.json()
     
     if (data.data?.diff) {
-      return data.data.diff.map((s: any) => ({
+      const stocks = data.data.diff.map((s: any) => ({
         code: s.f12,
         name: s.f14,
         percent: s.f3,
         price: s.f2,
-        limitDays: s.f62 || 0
+        limitDays: s.f62 || 0,
+        amount: s.f6 || 0
       }))
+      const totalAmount = stocks.reduce((sum: number, s: any) => sum + (s.amount || 0), 0)
+      return { stocks, totalAmount }
     }
-    return []
+    return { stocks: [], totalAmount: 0 }
   } catch (e) {
     console.log(`涨停API错误: ${e}`)
-    return []
+    return { stocks: [], totalAmount: 0 }
   }
 }
 
-// 获取跌停股票
-async function fetchLimitDown(date: string): Promise<LimitDownStock[]> {
-  const url = `https://push2.eastmoney.com/api/qt/stock/ztlist/get?pn=1&pz=500&po=0&np=1&fltt=2&invt=2&fid=f3&fs=m:0+t:6,m:0+t:80,m:1+t:2,m:1+t:23&fields=f12,f14,f2,f3,f62,f8`
+// 获取跌停股票（东方财富API）
+async function fetchLimitDown(date: string): Promise<{ stocks: LimitDownStock[], totalAmount: number }> {
+  const url = `https://push2.eastmoney.com/api/qt/stock/ztlist/get?pn=1&pz=500&po=1&np=1&fltt=2&invt=2&fid=f3&fs=m:0+t:6,m:0+t:80,m:1+t:2,m:1+t:23&fields=f12,f14,f2,f3,f62,f8,f6`
   
   try {
     const res = await fetch(url)
     const data = await res.json()
     
     if (data.data?.diff) {
-      return data.data.diff
+      const stocks = data.data.diff
         .filter((s: any) => s.f3 <= -9.9)
         .map((s: any) => ({
           code: s.f12,
           name: s.f14,
           percent: s.f3,
           price: s.f2,
-          limitDays: Math.abs(s.f62 || 0)
+          limitDays: Math.abs(s.f62 || 0),
+          amount: s.f6 || 0
         }))
+      const totalAmount = stocks.reduce((sum: number, s: any) => sum + (s.amount || 0), 0)
+      return { stocks, totalAmount }
     }
-    return []
+    return { stocks: [], totalAmount: 0 }
   } catch (e) {
     console.log(`跌停API错误: ${e}`)
-    return []
+    return { stocks: [], totalAmount: 0 }
   }
 }
 
@@ -111,7 +119,7 @@ async function fetchConceptRank(): Promise<ConceptData[]> {
       return data.data.diff.map((s: any) => ({
         name: s.f14,
         percent: s.f3,
-        upCount: 0,  // 需要额外API
+        upCount: 0,
         downCount: 0,
         amount: s.f6 || 0
       }))
@@ -200,69 +208,78 @@ serve(async (req: Request) => {
     const url = new URL(req.url)
     const days = parseInt(url.searchParams.get('days') || '1')
     const today = new Date().toISOString().split('T')[0]
+    const todayFormatted = today.replace(/-/g, '')
     
     console.log(`=== 开始采集近${days}日数据 ===`)
     
     // 采集今日数据
-    const [limitUp, limitDown, concepts] = await Promise.all([
-      fetchLimitUp(today),
-      fetchLimitDown(today),
+    const [limitUpResult, limitDownResult, concepts] = await Promise.all([
+      fetchLimitUp(todayFormatted),
+      fetchLimitDown(todayFormatted),
       fetchConceptRank()
     ])
     
-    const maxLimit = limitUp.length > 0 
-      ? Math.max(...limitUp.map((s: any) => s.limitDays || 0))
+    const maxLimit = limitUpResult.stocks.length > 0 
+      ? Math.max(...limitUpResult.stocks.map((s: any) => s.limitDays || 0))
       : 0
     
-    // 保存今日数据
+    // 保存今日数据（使用涨停成交额）
     await saveDailyStats({
       date: today,
-      limitUpCount: limitUp.length,
-      limitDownCount: limitDown.length,
-      totalAmount: 0,
+      limitUpCount: limitUpResult.stocks.length,
+      limitDownCount: limitDownResult.stocks.length,
+      totalAmount: limitUpResult.totalAmount,
       maxContinuousLimit: maxLimit
     })
     
-    await saveLimitUpStocks(today, limitUp)
-    await saveLimitDownStocks(today, limitDown)
+    await saveLimitUpStocks(today, limitUpResult.stocks)
+    await saveLimitDownStocks(today, limitDownResult.stocks)
     await saveConcepts(today, concepts)
+    
+    console.log(`今日: 涨停${limitUpResult.stocks.length}只, 成交额${(limitUpResult.totalAmount/1e8).toFixed(0)}亿`)
     
     // 采集历史数据
     const historyResults = []
     for (let i = 1; i < days; i++) {
       const date = new Date()
       date.setDate(date.getDate() - i)
-      const dateStr = date.toISOString().split('T')[0].replace(/-/g, '')
+      const dateStr = date.toISOString().split('T')[0]
+      const dateFormatted = dateStr.replace(/-/g, '')
       
       console.log(`采集 ${dateStr}...`)
       
       try {
-        const [zt, dt] = await Promise.all([
-          fetchLimitUp(dateStr),
-          fetchLimitDown(dateStr)
+        const [ztResult, dtResult] = await Promise.all([
+          fetchLimitUp(dateFormatted),
+          fetchLimitDown(dateFormatted)
         ])
         
-        const maxL = zt.length > 0 ? Math.max(...zt.map((s: any) => s.limitDays || 0)) : 0
+        const maxL = ztResult.stocks.length > 0 
+          ? Math.max(...ztResult.stocks.map((s: any) => s.limitDays || 0)) 
+          : 0
         
         await saveDailyStats({
           date: dateStr,
-          limitUpCount: zt.length,
-          limitDownCount: dt.length,
-          totalAmount: 0,
+          limitUpCount: ztResult.stocks.length,
+          limitDownCount: dtResult.stocks.length,
+          totalAmount: ztResult.totalAmount,
           maxContinuousLimit: maxL
         })
         
         historyResults.push({
           date: dateStr,
-          limitUp: zt.length,
-          limitDown: dt.length
+          limitUp: ztResult.stocks.length,
+          limitDown: dtResult.stocks.length,
+          amount: ztResult.totalAmount
         })
+        
+        console.log(`  ${dateStr}: 涨停${ztResult.stocks.length}只, 成交额${(ztResult.totalAmount/1e8).toFixed(0)}亿`)
       } catch (e) {
         console.log(`${dateStr}采集失败: ${e}`)
       }
       
       // 避免请求过快
-      await new Promise(r => setTimeout(r, 1000))
+      await new Promise(r => setTimeout(r, 500))
     }
     
     console.log('=== 采集完成 ===')
@@ -272,11 +289,12 @@ serve(async (req: Request) => {
       data: {
         today: {
           date: today,
-          limitUpCount: limitUp.length,
-          limitDownCount: limitDown.length,
+          limitUpCount: limitUpResult.stocks.length,
+          limitDownCount: limitDownResult.stocks.length,
+          totalAmount: limitUpResult.totalAmount,
           maxContinuousLimit: maxLimit,
-          limitUp: limitUp.slice(0, 30),
-          limitDown: limitDown.slice(0, 30)
+          limitUp: limitUpResult.stocks.slice(0, 30),
+          limitDown: limitDownResult.stocks.slice(0, 30)
         },
         history: historyResults,
         concepts: concepts.slice(0, 20)

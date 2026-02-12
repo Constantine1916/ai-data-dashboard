@@ -5,8 +5,10 @@ import { useAuth } from '@/hooks/useAuth'
 import { Button } from '@/components/ui/Button'
 import { MarketOverview } from '@/components/dashboard/MarketOverview'
 import { MarketIndices } from '@/components/dashboard/MarketIndices'
-import { MarketTrendChart } from '@/components/dashboard/MarketTrendChart'
 import { TopicRankings } from '@/components/dashboard/TopicRankings'
+import { AmountChart } from '@/components/dashboard/AmountChart'
+import { LimitUpDownChart } from '@/components/dashboard/LimitUpDownChart'
+import { LimitBoardChart } from '@/components/dashboard/LimitBoardChart'
 import { useState, useEffect } from 'react'
 import type { DailyMarketStats } from '@/types/market'
 
@@ -15,7 +17,6 @@ function DashboardContent() {
   const [historyData, setHistoryData] = useState<DailyMarketStats[]>([])
   const [loading, setLoading] = useState(true)
 
-  // 只获取一次历史数据
   useEffect(() => {
     const fetchHistory = async () => {
       try {
@@ -62,14 +63,16 @@ function DashboardContent() {
             <MarketOverview />
           </div>
 
-          {/* 市场趋势图 - 三条折线 */}
-          <div className="mb-6">
-            <MarketTrendChart data={historyData} loading={loading} />
+          {/* 第一行：成交额 + 题材榜 */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+            <AmountChart data={historyData} loading={loading} />
+            <TopicRankings />
           </div>
 
-          {/* 题材涨幅榜单 */}
-          <div className="mb-6">
-            <TopicRankings />
+          {/* 第二行：涨跌停对比 + 连板高度 */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+            <LimitUpDownChart data={historyData} loading={loading} />
+            <LimitBoardChart data={historyData} loading={loading} />
           </div>
         </div>
       </div>
