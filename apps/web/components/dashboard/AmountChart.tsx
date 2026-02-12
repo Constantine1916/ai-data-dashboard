@@ -135,8 +135,8 @@ export function AmountChart({ data = [], loading = false }: AmountChartProps) {
     <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 h-full flex flex-col">
       <div className="flex justify-between items-start mb-4 flex-shrink-0">
         <div>
-          <h3 className="text-lg font-semibold text-gray-900">💰 涨停成交额</h3>
-          <p className="text-sm text-gray-500 mt-1">近 {data.length} 天 · 涨停股票成交额</p>
+          <h3 className="text-lg font-semibold text-gray-900">💰 市场成交额</h3>
+          <p className="text-sm text-gray-500 mt-1">沪深两市总成交额 · 近 {data.length} 天</p>
         </div>
         <div className="text-right">
           <div className="text-2xl font-bold text-blue-600">{stats?.latest.toFixed(1)}亿</div>
@@ -165,10 +165,6 @@ export function AmountChart({ data = [], loading = false }: AmountChartProps) {
           <div className="text-xs text-gray-400">平均</div>
           <div className="text-sm font-semibold text-gray-700">{stats?.avgAmt.toFixed(1)}亿</div>
         </div>
-      </div>
-
-      <div className="mt-3 text-xs text-gray-400 text-center flex-shrink-0">
-        注：此为涨停股票的成交额，非市场总成交额
       </div>
     </div>
   )
