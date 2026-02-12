@@ -71,7 +71,17 @@ export const POST = createRouteHandler({
           throw insertError
         }
 
-        result = insertData ? [insertData as User] : []
+        // 转换 snake_case 到 camelCase
+        const userData: User = {
+          id: insertData.id,
+          email: insertData.email,
+          name: insertData.name,
+          role: insertData.role,
+          email_verified: insertData.email_verified,
+          createdAt: insertData.created_at,
+          updatedAt: insertData.updated_at,
+        }
+        result = [userData]
       } else {
         // 使用直接 PostgreSQL 连接（如果可用）
         // 检查邮箱是否已存在
@@ -109,7 +119,7 @@ export const POST = createRouteHandler({
       const user = result[0]
 
       // 生成 Token
-      const token = generateToken(user)
+      const token = generateToken(user as User)
 
       // 创建响应
       const response = NextResponse.json(
@@ -120,8 +130,8 @@ export const POST = createRouteHandler({
             name: user.name,
             role: user.role,
             email_verified: user.email_verified || false,
-            createdAt: user.created_at,
-            updatedAt: user.updated_at,
+            createdAt: (user as any).created_at || user.createdAt,
+            updatedAt: (user as any).updated_at || user.updatedAt,
           },
           // 仍然在响应体中返回 token（向后兼容，前端可以选择使用）
           token,
