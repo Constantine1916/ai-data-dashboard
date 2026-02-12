@@ -75,6 +75,12 @@ function DashboardContent() {
 
           {/* 连板趋势 */}
           <div className="mb-6">
+            <MarketTrendChart
+              title="连板高度"
+              data={historyData}
+              loading={loading}
+            />
+          </div>
 
           {/* 题材涨幅榜单 */}
           <div className="mb-6">
