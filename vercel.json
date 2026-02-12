@@ -1,7 +1,7 @@
 {
-  "buildCommand": "cd apps/web && npm run build",
+  "buildCommand": "npm run build --workspace=apps/web",
   "devCommand": "npm run dev",
-  "installCommand": "npm install",
+  "installCommand": "npm install --workspaces",
   "framework": "nextjs",
   "functions": {
     "app/api/**/*.ts": {
