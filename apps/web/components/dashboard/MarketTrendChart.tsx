@@ -1,69 +1,68 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useMemo } from 'react'
 import type { DailyMarketStats } from '@/types/market'
 
 interface MarketTrendChartProps {
   title: string
   dataKey: 'limitUpCount' | 'limitDownCount' | 'maxContinuousLimit' | 'totalAmount'
   color?: string
-  days?: number
+  data?: DailyMarketStats[]
+  loading?: boolean
 }
 
-export function MarketTrendChart({ title, dataKey, color = '#3b82f6', days = 30 }: MarketTrendChartProps) {
-  const [data, setData] = useState<DailyMarketStats[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => {
-    fetchHistoryData()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [days])
-
-  const fetchHistoryData = async () => {
-    try {
-      setLoading(true)
-      const res = await fetch(`/api/stats/history?days=${days}`)
-      const result = await res.json()
-
-      if (result.success) {
-        // 按日期升序排列（用于图表）
-        setData(result.data.reverse())
-        setError(null)
-      } else {
-        setError(result.error?.message || '获取数据失败')
-      }
-    } catch (err: any) {
-      setError(err.message || '网络错误')
-    } finally {
-      setLoading(false)
+export function MarketTrendChart({ 
+  title, 
+  dataKey, 
+  color = '#3b82f6', 
+  data = [],
+  loading = false 
+}: MarketTrendChartProps) {
+  // 计算数据
+  const { maxValue, minValue, latestValue, points } = useMemo(() => {
+    if (data.length === 0) {
+      return { maxValue: 0, minValue: 0, latestValue: 0, points: '' }
     }
-  }
+
+    const values = data.map((item) => {
+      const val = item[dataKey]
+      return typeof val === 'number' ? val : 0
+    })
+
+    const maxVal = Math.max(...values)
+    const minVal = Math.min(...values)
+    const latest = values[values.length - 1]
+
+    // 生成SVG路径点
+    const svgPoints = data.map((item, index) => {
+      const val = item[dataKey]
+      const value = typeof val === 'number' ? val : 0
+      const x = (index / (data.length - 1 || 1)) * 800
+      const y = 200 - ((value - minVal) / (maxVal - minVal || 1)) * 200
+      return `${x},${y}`
+    }).join(' ')
+
+    return { 
+      maxValue: maxVal, 
+      minValue: minVal, 
+      latestValue: latest,
+      points: svgPoints
+    }
+  }, [data, dataKey])
 
   const formatValue = (value: number) => {
     if (dataKey === 'totalAmount') {
-      return `${(value / 100000000).toFixed(0)}亿`
+      if (value >= 1e12) return `${(value / 1e12).toFixed(1)}万亿`
+      if (value >= 1e11) return `${(value / 1e11).toFixed(1)}千亿`
+      if (value >= 1e10) return `${(value / 1e10).toFixed(1)}百亿`
+      if (value >= 1e9) return `${(value / 1e9).toFixed(1)}十亿`
+      if (value >= 1e8) return `${(value / 1e8).toFixed(0)}亿`
+      return `${(value / 1e6).toFixed(0)}万`
     }
     if (dataKey === 'maxContinuousLimit') {
       return `${value}连`
     }
     return value
-  }
-
-  const getMaxValue = () => {
-    if (data.length === 0) return 0
-    return Math.max(...data.map((item) => {
-      const val = item[dataKey]
-      return typeof val === 'number' ? val : 0
-    }))
-  }
-
-  const getMinValue = () => {
-    if (data.length === 0) return 0
-    return Math.min(...data.map((item) => {
-      const val = item[dataKey]
-      return typeof val === 'number' ? val : 0
-    }))
   }
 
   if (loading) {
@@ -75,17 +74,6 @@ export function MarketTrendChart({ title, dataKey, color = '#3b82f6', days = 30 
     )
   }
 
-  if (error) {
-    return (
-      <div className="bg-white rounded-lg shadow p-6">
-        <h3 className="text-lg font-semibold mb-4">{title}</h3>
-        <div className="bg-red-50 border border-red-200 rounded p-4">
-          <p className="text-red-600 text-sm">❌ {error}</p>
-        </div>
-      </div>
-    )
-  }
-
   if (data.length === 0) {
     return (
       <div className="bg-white rounded-lg shadow p-6">
@@ -93,16 +81,14 @@ export function MarketTrendChart({ title, dataKey, color = '#3b82f6', days = 30 
         <div className="bg-yellow-50 border border-yellow-200 rounded p-4">
           <p className="text-yellow-800 text-sm">⚠️ 暂无历史数据</p>
           <p className="text-yellow-600 text-xs mt-2">
-            数据将从今天开始累积，{days} 天后将显示完整趋势图
+            数据将从今天开始累积，7天后将显示完整趋势图
           </p>
         </div>
       </div>
     )
   }
 
-  const maxValue = getMaxValue()
-  const minValue = getMinValue()
-  const latestValue = data[data.length - 1]?.[dataKey] || 0
+  const fillPoints = points + ' 800,200 0,200'
 
   return (
     <div className="bg-white rounded-lg shadow p-6">
@@ -113,13 +99,13 @@ export function MarketTrendChart({ title, dataKey, color = '#3b82f6', days = 30 
         </div>
         <div className="text-right">
           <div className="text-2xl font-bold" style={{ color }}>
-            {formatValue(typeof latestValue === 'number' ? latestValue : 0)}
+            {formatValue(latestValue)}
           </div>
           <div className="text-xs text-gray-500">最新</div>
         </div>
       </div>
 
-      {/* 简易折线图（SVG实现，不依赖第三方库） */}
+      {/* 简易折线图（SVG实现） */}
       <div className="relative h-64 border border-gray-200 rounded-lg p-4 bg-gray-50">
         <svg width="100%" height="100%" viewBox="0 0 800 200" preserveAspectRatio="none">
           {/* 背景网格 */}
@@ -130,37 +116,21 @@ export function MarketTrendChart({ title, dataKey, color = '#3b82f6', days = 30 
           <line x1="0" y1="200" x2="800" y2="200" stroke="#e5e7eb" strokeWidth="1" />
 
           {/* 折线 */}
-          <polyline
-            fill="none"
-            stroke={color}
-            strokeWidth="2"
-            points={data
-              .map((item, index) => {
-                const val = item[dataKey]
-                const value = typeof val === 'number' ? val : 0
-                const x = (index / (data.length - 1 || 1)) * 800
-                const y = 200 - ((value - minValue) / (maxValue - minValue || 1)) * 200
-                return `${x},${y}`
-              })
-              .join(' ')}
-          />
-
-          {/* 填充区域 */}
-          <polygon
-            fill={color}
-            fillOpacity="0.1"
-            points={
-              data
-                .map((item, index) => {
-                  const val = item[dataKey]
-                  const value = typeof val === 'number' ? val : 0
-                  const x = (index / (data.length - 1 || 1)) * 800
-                  const y = 200 - ((value - minValue) / (maxValue - minValue || 1)) * 200
-                  return `${x},${y}`
-                })
-                .join(' ') + ' 800,200 0,200'
-            }
-          />
+          {points && (
+            <>
+              <polyline
+                fill="none"
+                stroke={color}
+                strokeWidth="2"
+                points={points}
+              />
+              <polygon
+                fill={color}
+                fillOpacity="0.1"
+                points={fillPoints}
+              />
+            </>
+          )}
         </svg>
 
         {/* 数值标注 */}

@@ -7,9 +7,32 @@ import { MarketOverview } from '@/components/dashboard/MarketOverview'
 import { MarketIndices } from '@/components/dashboard/MarketIndices'
 import { MarketTrendChart } from '@/components/dashboard/MarketTrendChart'
 import { TopicRankings } from '@/components/dashboard/TopicRankings'
+import { useState, useEffect } from 'react'
+import type { DailyMarketStats } from '@/types/market'
 
 function DashboardContent() {
   const { user, logout } = useAuth()
+  const [historyData, setHistoryData] = useState<DailyMarketStats[]>([])
+  const [loading, setLoading] = useState(true)
+
+  // 只获取一次历史数据
+  useEffect(() => {
+    const fetchHistory = async () => {
+      try {
+        const res = await fetch('/api/stats/history?days=7')
+        const data = await res.json()
+        if (data.success) {
+          // 按日期升序排列（用于图表）
+          setHistoryData(data.data.reverse())
+        }
+      } catch (err) {
+        console.error('获取历史数据失败:', err)
+      } finally {
+        setLoading(false)
+      }
+    }
+    fetchHistory()
+  }, [])
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -46,13 +69,15 @@ function DashboardContent() {
               title="涨停数量趋势"
               dataKey="limitUpCount"
               color="#ef4444"
-              days={7}
+              data={historyData}
+              loading={loading}
             />
             <MarketTrendChart
               title="市场成交额趋势"
               dataKey="totalAmount"
               color="#3b82f6"
-              days={7}
+              data={historyData}
+              loading={loading}
             />
           </div>
 
@@ -61,13 +86,15 @@ function DashboardContent() {
               title="最高连板趋势"
               dataKey="maxContinuousLimit"
               color="#8b5cf6"
-              days={7}
+              data={historyData}
+              loading={loading}
             />
             <MarketTrendChart
               title="跌停数量趋势"
               dataKey="limitDownCount"
               color="#10b981"
-              days={7}
+              data={historyData}
+              loading={loading}
             />
           </div>
 
