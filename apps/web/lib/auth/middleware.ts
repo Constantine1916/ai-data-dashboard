@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { verifyToken, extractTokenFromRequest, isTokenExpiringSoon, generateToken } from './index'
-import { createErrorResponse, ERROR_CODES, HTTP_STATUS } from '@ai-data-dashboard/shared'
+import { createErrorResponse, ERROR_CODES, HTTP_STATUS } from '@/lib/shared'
 import { setAuthCookie } from './cookies'
 import { query } from '@/lib/db'
 import { supabase } from '@/lib/db/supabase'

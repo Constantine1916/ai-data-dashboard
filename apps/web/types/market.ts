@@ -1,4 +1,4 @@
-import type { BaseEntity } from '@ai-data-dashboard/shared'
+import type { BaseEntity } from '@/lib/shared'
 
 /**
  * 每日市场统计数据

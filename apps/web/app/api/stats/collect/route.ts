@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createRouteHandler } from '@/lib/api/route-handler'
-import { createSuccessResponse, createErrorResponse } from '@ai-data-dashboard/shared'
+import { createSuccessResponse, createErrorResponse } from '@/lib/shared'
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL ?? ''
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ?? ''
