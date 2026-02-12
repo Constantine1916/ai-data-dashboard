@@ -22,7 +22,6 @@ function DashboardContent() {
         const res = await fetch('/api/stats/history?days=7')
         const data = await res.json()
         if (data.success) {
-          // 按日期升序排列（用于图表）
           setHistoryData(data.data.reverse())
         }
       } catch (err) {
@@ -63,23 +62,9 @@ function DashboardContent() {
             <MarketOverview />
           </div>
 
-          {/* 趋势图 - 涨跌停对比 */}
+          {/* 市场趋势图 - 三条折线 */}
           <div className="mb-6">
-            <MarketTrendChart
-              title="涨跌停对比"
-              showBoth={true}
-              data={historyData}
-              loading={loading}
-            />
-          </div>
-
-          {/* 连板趋势 */}
-          <div className="mb-6">
-            <MarketTrendChart
-              title="连板高度"
-              data={historyData}
-              loading={loading}
-            />
+            <MarketTrendChart data={historyData} loading={loading} />
           </div>
 
           {/* 题材涨幅榜单 */}
