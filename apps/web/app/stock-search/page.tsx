@@ -323,7 +323,7 @@ export default function StockSearchPage() {
               </svg>
             </div>
             <p className="text-gray-500">输入股票代码或名称开始查询</p>
-            <p className="text-sm text-gray-400 mt-2">支持中文名称搜索，如"茅台"</p>
+            <p className="text-sm text-gray-400 mt-2">支持中文名称搜索，如&quot;茅台&quot;</p>
           </div>
         )}
       </div>

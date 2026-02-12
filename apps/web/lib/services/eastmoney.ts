@@ -99,7 +99,7 @@ export class EastMoneyService {
       const data: EastMoneyResponse<EastMoneyStock> = await response.json()
 
       if (data.rc !== 0 || !data.data) {
-        throw new Error(`东方财富API返回数据异常: rc=${data.rc}, rs=${data.rs}`)
+        throw new Error(`东方财富API返回数据异常: rc=${data.rc}`)
       }
 
       return data.data.diff || []
