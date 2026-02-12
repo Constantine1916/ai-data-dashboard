@@ -213,6 +213,71 @@ export class EastMoneyService {
   }
 
   /**
+   * 获取大A主要指数实时数据
+   */
+  static async getMarketIndices(): Promise<Array<{
+    code: string
+    name: string
+    price: number
+    change: number
+    changePercent: number
+    volume: number
+    amount: number
+  }>> {
+    // 主要指数代码
+    const indices = [
+      { code: 'sh000001', name: '上证指数' },
+      { code: 'sz399001', name: '深证成指' },
+      { code: 'sz399006', name: '创业板指' },
+      { code: 'sh000688', name: '科创50' },
+      { code: 'sz399905', name: '中证500' },
+      { code: 'sh000300', name: '沪深300' },
+      { code: 'sz399852', name: '北证50' },
+    ]
+
+    const results = await Promise.all(
+      indices.map(async (index) => {
+        try {
+          const url = `https://push2.eastmoney.com/api/qt/stock/get?secid=${index.code}&fields=f2,f3,f4,f5,f6,f8,f12,f14`
+          const response = await this.fetchWithRetry(url)
+          
+          if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`)
+          }
+
+          const data = await response.json()
+          
+          if (data.data) {
+            return {
+              code: index.code,
+              name: index.name,
+              price: data.data.f2 || 0,
+              change: data.data.f4 || 0,
+              changePercent: data.data.f3 || 0,
+              volume: data.data.f5 || 0,
+              amount: data.data.f6 || 0,
+            }
+          }
+          throw new Error('No data')
+        } catch (error: any) {
+          console.warn(`[EastMoney] 获取 ${index.name} 失败: ${error.message}`)
+          return {
+            code: index.code,
+            name: index.name,
+            price: 0,
+            change: 0,
+            changePercent: 0,
+            volume: 0,
+            amount: 0,
+          }
+        }
+      })
+    )
+
+    return results
+  }
+
+  /**
    * 收集今日所有市场数据（用于定时任务）
    */
   static async collectTodayStats() {
