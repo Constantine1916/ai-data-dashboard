@@ -33,11 +33,11 @@ export function TopicRankings() {
 
   if (loading) {
     return (
-      <div className="bg-white rounded-lg shadow p-6">
-        <div className="h-4 bg-gray-200 rounded w-1/3 mb-4 animate-pulse"></div>
-        <div className="space-y-3">
-          {[1, 2, 3, 4, 5].map((i) => (
-            <div key={i} className="h-12 bg-gray-100 rounded animate-pulse"></div>
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 h-full flex flex-col">
+        <div className="h-4 bg-gray-200 rounded w-1/3 mb-4 animate-pulse flex-shrink-0"></div>
+        <div className="space-y-2 overflow-y-auto max-h-[320px] pr-2 flex-1">
+          {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
+            <div key={i} className="h-14 bg-gray-100 rounded animate-pulse flex-shrink-0"></div>
           ))}
         </div>
       </div>
@@ -46,9 +46,9 @@ export function TopicRankings() {
 
   if (error) {
     return (
-      <div className="bg-white rounded-lg shadow p-6">
-        <h3 className="text-lg font-semibold mb-4">一周题材涨幅</h3>
-        <div className="bg-red-50 border border-red-200 rounded p-4">
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 h-full flex flex-col">
+        <h3 className="text-lg font-semibold text-gray-900 mb-4 flex-shrink-0">📈 题材涨幅 TOP20</h3>
+        <div className="bg-red-50 border border-red-200 rounded p-4 flex-1">
           <p className="text-red-600 text-sm">❌ {error}</p>
         </div>
       </div>
@@ -57,9 +57,9 @@ export function TopicRankings() {
 
   if (topics.length === 0) {
     return (
-      <div className="bg-white rounded-lg shadow p-6">
-        <h3 className="text-lg font-semibold mb-4">一周题材涨幅</h3>
-        <div className="bg-yellow-50 border border-yellow-200 rounded p-4">
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 h-full flex flex-col">
+        <h3 className="text-lg font-semibold text-gray-900 mb-4 flex-shrink-0">📈 题材涨幅 TOP20</h3>
+        <div className="bg-yellow-50 border border-yellow-200 rounded p-4 flex-1">
           <p className="text-yellow-800 text-sm">⚠️ 暂无数据</p>
         </div>
       </div>
@@ -67,9 +67,9 @@ export function TopicRankings() {
   }
 
   return (
-    <div className="bg-white rounded-lg shadow p-6">
-      <div className="flex justify-between items-center mb-4">
-        <h3 className="text-lg font-semibold text-gray-900">一周题材涨幅 TOP20</h3>
+    <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 h-full flex flex-col">
+      <div className="flex justify-between items-center mb-4 flex-shrink-0">
+        <h3 className="text-lg font-semibold text-gray-900">📈 题材涨幅 TOP20</h3>
         <button
           onClick={fetchTopics}
           className="text-sm text-blue-600 hover:text-blue-800"
@@ -78,7 +78,7 @@ export function TopicRankings() {
         </button>
       </div>
 
-      <div className="space-y-2">
+      <div className="space-y-2 overflow-y-auto max-h-[320px] pr-2 custom-scrollbar flex-1">
         {topics.map((topic, index) => {
           const isPositive = topic.changePercent >= 0
           const percentColor = isPositive ? 'text-red-600' : 'text-green-600'
@@ -87,7 +87,7 @@ export function TopicRankings() {
           return (
             <div
               key={topic.topicCode}
-              className={`flex items-center justify-between p-3 rounded-lg ${bgColor} hover:shadow-sm transition-shadow`}
+              className={`flex items-center justify-between p-3 rounded-lg ${bgColor} hover:shadow-sm transition-shadow flex-shrink-0`}
             >
               <div className="flex items-center gap-3">
                 <span
@@ -114,6 +114,23 @@ export function TopicRankings() {
           )
         })}
       </div>
+
+      <style jsx global>{`
+        .custom-scrollbar::-webkit-scrollbar {
+          width: 4px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+          background: #f3f4f6;
+          border-radius: 2px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+          background: #d1d5db;
+          border-radius: 2px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+          background: #9ca3af;
+        }
+      `}</style>
     </div>
   )
 }
