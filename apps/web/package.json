@@ -13,6 +13,8 @@
     "@supabase/supabase-js": "^2.91.1",
     "bcryptjs": "^2.4.3",
     "dotenv": "^16.4.5",
+    "echarts": "^6.0.0",
+    "echarts-for-react": "^3.0.6",
     "jsonwebtoken": "^9.0.2",
     "next": "^14.2.35",
     "pg": "^8.13.1",
