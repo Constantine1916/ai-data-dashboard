@@ -25,23 +25,42 @@ interface EastMoneyResponse<T> {
   } | null
 }
 
+// 根据代码和名称判断涨停阈值
+function getLimitThreshold(code: string, name: string): number {
+  // ST股票涨停幅度是5%
+  if (name.startsWith('ST') && !name.includes('*')) {
+    return 4.9
+  }
+  // 北交所 30%
+  if (code.startsWith('8')) {
+    return 29.9
+  }
+  // 科创板/创业板 20%
+  if (code.startsWith('68') || code.startsWith('300') || code.startsWith('301')) {
+    return 19.9
+  }
+  // 主板 10%
+  return 9.9
+}
+
+// 判断是否为ST股票
+function isSTStock(name: string): boolean {
+  return name.startsWith('ST') && !name.includes('*')
+}
+
 // 东方财富API请求
 async function fetchEastMoney(params: string): Promise<EastMoneyStock[]> {
   const url = `${EASTMONEY_BASE_URL}/clist/get?${params}`
   console.log(`请求东方财富: ${url.substring(0, 100)}...`)
   
   try {
-    const res = await fetch(url, {
-      headers: { 'User-Agent': 'Mozilla/5.0' }
-    })
-    
+    const res = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' } })
     if (!res.ok) {
       console.log(`HTTP错误: ${res.status}`)
       return []
     }
     
     const data: EastMoneyResponse<EastMoneyStock> = await res.json()
-    
     if (data.rc !== 0 || !data.data) {
       console.log(`API异常: rc=${data.rc}`)
       return []
@@ -55,12 +74,12 @@ async function fetchEastMoney(params: string): Promise<EastMoneyStock[]> {
   }
 }
 
-// 获取涨停股票
+// 获取涨停股票（正确判断各板块阈值）
 async function getLimitUpStocks(): Promise<EastMoneyStock[]> {
   const params = new URLSearchParams({
     pn: '1',
     pz: '5000',
-    po: '1',  // 降序
+    po: '1',
     np: '1',
     ut: 'bd1d9ddb04089700cf9c27f6f7426281',
     fltt: '2',
@@ -72,21 +91,18 @@ async function getLimitUpStocks(): Promise<EastMoneyStock[]> {
   
   const allStocks = await fetchEastMoney(params.toString())
   
-  // 过滤涨停（>=9.9%），排除ST、*、N开头
-  return allStocks.filter(s => 
-    s.f3 >= 9.9 &&
-    !s.f14.includes('ST') &&
-    !s.f14.includes('*') &&
-    !s.f14.startsWith('N')
-  )
+  return allStocks.filter(s => {
+    const threshold = getLimitThreshold(s.f12, s.f14)
+    return s.f3 >= threshold && !isSTStock(s.f14)
+  })
 }
 
-// 获取跌停股票
+// 获取跌停股票（正确判断各板块阈值）
 async function getLimitDownStocks(): Promise<EastMoneyStock[]> {
   const params = new URLSearchParams({
     pn: '1',
     pz: '5000',
-    po: '0',  // 升序
+    po: '0',
     np: '1',
     ut: 'bd1d9ddb04089700cf9c27f6f7426281',
     fltt: '2',
@@ -98,12 +114,10 @@ async function getLimitDownStocks(): Promise<EastMoneyStock[]> {
   
   const allStocks = await fetchEastMoney(params.toString())
   
-  // 过滤跌停（<=-9.9%），排除ST、*
-  return allStocks.filter(s => 
-    s.f3 <= -9.9 &&
-    !s.f14.includes('ST') &&
-    !s.f14.includes('*')
-  )
+  return allStocks.filter(s => {
+    const threshold = getLimitThreshold(s.f12, s.f14)
+    return s.f3 <= -threshold && !isSTStock(s.f14)
+  })
 }
 
 // 获取成交量和成交额
@@ -132,10 +146,8 @@ async function getMarketVolume(): Promise<{ volume: number; amount: number }> {
 // 获取最高连板天数
 async function getMaxContinuousLimit(): Promise<number> {
   const limitUp = await getLimitUpStocks()
-  
   if (limitUp.length === 0) return 0
   
-  // 取0-50范围的连板天数
   const validLimits = limitUp
     .map(s => s.f62 || 0)
     .filter(v => v >= 0 && v <= 50)
@@ -198,7 +210,7 @@ serve(async (req: Request) => {
     console.log(`成交量: ${(stats.totalVolume/1e8).toFixed(2)}亿手, 成交额: ${(stats.totalAmount/1e8).toFixed(2)}亿`)
     
     // 返回涨停股票详情
-    const limitUpDetails = limitUpStocks.slice(0, 20).map(s => ({
+    const limitUpDetails = limitUpStocks.slice(0, 30).map(s => ({
       code: s.f12,
       name: s.f14,
       percent: s.f3,
