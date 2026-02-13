@@ -134,8 +134,10 @@ export class MarketStatsService {
    * 获取今日市场统计数据
    */
   static async getTodayStats(): Promise<DailyMarketStats | null> {
-    const today = new Date().toISOString().split('T')[0]
-    
+    // 使用北京时间 (UTC+8) 获取今天日期
+    // 避免服务器UTC时区导致的数据查询错误
+    const today = new Date(new Date().getTime() + 8 * 60 * 60 * 1000).toISOString().split('T')[0]
+
     if (useSupabase) {
       const { data, error } = await supabase
         .from('daily_market_stats')
@@ -144,7 +146,7 @@ export class MarketStatsService {
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle()
-      
+
       if (error) throw error
       return data ? this.mapDbToDailyStats(data) : null
     } else {
