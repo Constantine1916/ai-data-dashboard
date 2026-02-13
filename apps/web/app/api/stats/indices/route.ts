@@ -6,6 +6,7 @@ import { EastMoneyService } from '@/lib/services/eastmoney'
 /**
  * GET /api/stats/indices
  * 获取大A主要指数实时数据
+ * 注意：腾讯API对指数不提供成交额数据，价格/涨跌幅数据正常
  */
 export const GET = createRouteHandler({
   GET: async () => {
@@ -19,7 +20,14 @@ export const GET = createRouteHandler({
         )
       }
 
-      return NextResponse.json(createSuccessResponse(indices))
+      // 腾讯API对指数不返回成交额，amount为0是正常的
+      // 实际成交额数据请参考 /api/stats/history 接口
+      const result = indices.map(index => ({
+        ...index,
+        amount: index.price > 0 ? 0 : 0, // 腾讯API不提供指数成交额
+      }))
+
+      return NextResponse.json(createSuccessResponse(result))
     } catch (error: any) {
       console.error('[API] 获取指数数据失败:', error)
       return NextResponse.json(
