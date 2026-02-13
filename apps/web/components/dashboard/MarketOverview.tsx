@@ -75,6 +75,16 @@ export function MarketOverview({ todayStats: initialStats }: MarketOverviewProps
     )
   }
 
+  // 格式化成交额
+  const formatAmount = (amount: number) => {
+    if (amount >= 1e12) return `${(amount / 1e12).toFixed(2)}万亿`
+    if (amount >= 1e11) return `${(amount / 1e11).toFixed(1)}千亿`
+    if (amount >= 1e10) return `${(amount / 1e10).toFixed(1)}百亿`
+    if (amount >= 1e9) return `${(amount / 1e9).toFixed(1)}十亿`
+    if (amount >= 1e8) return `${(amount / 1e8).toFixed(0)}亿`
+    return `${(amount / 1e6).toFixed(0)}万`
+  }
+
   const cards = [
     {
       title: '涨停家数',
@@ -99,7 +109,7 @@ export function MarketOverview({ todayStats: initialStats }: MarketOverviewProps
     },
     {
       title: '市场成交额',
-      value: `${(stats.totalAmount / 100000000).toFixed(0)}亿`,
+      value: formatAmount(stats.totalAmount),
       color: 'text-blue-600',
       bgColor: 'bg-blue-50',
       icon: '💰',
