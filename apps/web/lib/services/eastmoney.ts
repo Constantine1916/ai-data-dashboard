@@ -215,12 +215,13 @@ export class EastMoneyService {
 
   /**
    * 解析腾讯股票数据
-   * 格式: v_sh000001="1~上证指数~000001~4082.07~4134.02~4115.92~500799472~...~846808337~..."
+   * 格式: v_sh000001="1~上证指数~000001~4082.07~4134.02~4115.92~500799472~...~0.00~..."
+   * 注意：腾讯API对指数不返回成交额(字段9为0)，需要使用 成交量×股价 估算
    * 字段说明:
    *   3: 当前价
    *   4: 昨日收盘价
    *   6: 成交量(股)
-   *   9: 成交额(万)
+   *   9: 成交额(万) - 指数返回0，需要估算
    */
   private static parseTencentStock(data: string, code: string) {
     try {
@@ -236,14 +237,21 @@ export class EastMoneyService {
       const change = now - yesterday                    // 涨跌额
       const changePercent = yesterday > 0 ? (change / yesterday) * 100 : 0
       const volume = parseFloat(parts[6]) || 0        // 成交量(股)
-      const amount = parseFloat(parts[9]) || 0        // 成交额(万) - 腾讯真实数据！
+      
+      // 成交额：腾讯对指数返回0，使用 成交量×股价 估算
+      let amount = parseFloat(parts[9]) || 0
+      if (amount === 0 && volume > 0 && now > 0) {
+        amount = volume * now // 估算成交额（元）
+      } else if (amount > 0) {
+        amount = amount * 10000 // 转换为元（万 → 元）
+      }
 
       return {
         price: now,
         change: change,
         changePercent: changePercent,
         volume: volume,
-        amount: amount * 10000, // 转换为元
+        amount: amount,
       }
     } catch {
       return null
