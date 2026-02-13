@@ -1,6 +1,7 @@
 import type { EastMoneyResponse, EastMoneyStock, EastMoneyTopic } from '@/types/market'
 
 const BASE_URL = 'https://push2.eastmoney.com/api/qt'
+const TENCENT_BASE_URL = 'https://qt.gtimg.cn/q'
 const TIMEOUT_MS = 30000 // 30秒超时
 
 /**
@@ -213,7 +214,44 @@ export class EastMoneyService {
   }
 
   /**
+   * 解析腾讯股票数据
+   * 格式: v_sh000001="1~上证指数~000001~4082.07~4134.02~4115.92~500799472~..."
+   */
+  private static parseTencentStock(data: string, code: string) {
+    try {
+      const match = data.match(new RegExp(`${code}=([^;]+)`))
+      if (!match) return null
+
+      const parts = match[1].replace(/^"|"$/g, '').split('~')
+
+      if (parts.length < 34) return null
+
+      const now = parseFloat(parts[3]) || 0           // 当前价
+      const yesterday = parseFloat(parts[4]) || 0      // 昨日收盘价
+      const change = now - yesterday                    // 涨跌额
+      const changePercent = yesterday > 0 ? (change / yesterday) * 100 : 0
+      const volume = parseFloat(parts[6]) || 0        // 成交量(股)
+      const high = parseFloat(parts[32]) || 0          // 最高价
+      const low = parseFloat(parts[33]) || 0           // 最低价
+
+      // 成交额估算 = 成交量 × 当前价
+      const amount = volume * now
+
+      return {
+        price: now,
+        change: change,
+        changePercent: changePercent,
+        volume: volume,
+        amount: amount,
+      }
+    } catch {
+      return null
+    }
+  }
+
+  /**
    * 获取大A主要指数实时数据
+   * 优先使用腾讯API（更稳定），备用东方财富API
    */
   static async getMarketIndices(): Promise<Array<{
     code: string
@@ -235,46 +273,100 @@ export class EastMoneyService {
       { code: 'sz399852', name: '北证50' },
     ]
 
-    const results = await Promise.all(
-      indices.map(async (index) => {
-        try {
-          const url = `https://push2.eastmoney.com/api/qt/stock/get?secid=${index.code}&fields=f2,f3,f4,f5,f6,f8,f12,f14`
-          const response = await this.fetchWithRetry(url)
-          
-          if (!response.ok) {
-            throw new Error(`HTTP ${response.status}`)
-          }
+    // 使用腾讯API获取指数数据
+    try {
+      const codes = indices.map(i => i.code).join(',')
+      const url = `${TENCENT_BASE_URL}=${codes}`
+      
+      const response = await fetch(url, {
+        signal: AbortSignal.timeout(10000),
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+          'Accept': '*/*',
+          'Accept-Language': 'zh-CN,zh;q=0.9',
+        },
+      })
 
-          const data = await response.json()
-          
-          if (data.data) {
-            return {
-              code: index.code,
-              name: index.name,
-              price: data.data.f2 || 0,
-              change: data.data.f4 || 0,
-              changePercent: data.data.f3 || 0,
-              volume: data.data.f5 || 0,
-              amount: data.data.f6 || 0,
-            }
-          }
-          throw new Error('No data')
-        } catch (error: any) {
-          console.warn(`[EastMoney] 获取 ${index.name} 失败: ${error.message}`)
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`)
+      }
+
+      const text = await response.text()
+      const rows = text.split(';').map(r => r.trim()).filter(r => r)
+
+      const results = indices.map((index, i) => {
+        const data = rows[i] || ''
+        const parsed = this.parseTencentStock(data, index.code)
+
+        if (parsed) {
           return {
             code: index.code,
             name: index.name,
-            price: 0,
-            change: 0,
-            changePercent: 0,
-            volume: 0,
-            amount: 0,
+            price: parsed.price,
+            change: parsed.change,
+            changePercent: parsed.changePercent,
+            volume: parsed.volume,
+            amount: parsed.amount,
           }
         }
-      })
-    )
 
-    return results
+        // 如果腾讯API失败，返回0数据
+        return {
+          code: index.code,
+          name: index.name,
+          price: 0,
+          change: 0,
+          changePercent: 0,
+          volume: 0,
+          amount: 0,
+        }
+      })
+
+      console.log(`[EastMoney] 使用腾讯API获取指数数据成功: ${results.filter(r => r.price > 0).length}/${results.length}`)
+      return results
+    } catch (error: any) {
+      console.warn(`[EastMoney] 腾讯API失败，尝试东方财富API: ${error.message}`)
+
+      // 备用：使用东方财富API
+      const results = await Promise.all(
+        indices.map(async (index) => {
+          try {
+            const url = `https://push2.eastmoney.com/api/qt/stock/get?secid=${index.code}&fields=f2,f3,f4,f5,f6,f8,f12,f14`
+            const response = await this.fetchWithRetry(url)
+            
+            if (!response.ok) throw new Error(`HTTP ${response.status}`)
+
+            const data = await response.json()
+            
+            if (data.data) {
+              return {
+                code: index.code,
+                name: index.name,
+                price: data.data.f2 || 0,
+                change: data.data.f4 || 0,
+                changePercent: data.data.f3 || 0,
+                volume: data.data.f5 || 0,
+                amount: data.data.f6 || 0,
+              }
+            }
+            throw new Error('No data')
+          } catch (err: any) {
+            console.warn(`[EastMoney] 获取 ${index.name} 失败: ${err.message}`)
+            return {
+              code: index.code,
+              name: index.name,
+              price: 0,
+              change: 0,
+              changePercent: 0,
+              volume: 0,
+              amount: 0,
+            }
+          }
+        })
+      )
+
+      return results
+    }
   }
 
   /**
