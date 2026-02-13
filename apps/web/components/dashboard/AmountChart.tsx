@@ -10,6 +10,14 @@ interface AmountChartProps {
 }
 
 export function AmountChart({ data = [], loading = false }: AmountChartProps) {
+  // 格式化成交额显示
+  const formatAmount = (amount: number) => {
+    if (amount >= 1e12) return `${(amount / 1e12).toFixed(2)}万亿`
+    if (amount >= 1e11) return `${(amount / 1e11).toFixed(1)}千亿`
+    if (amount >= 1e10) return `${(amount / 1e10).toFixed(1)}百亿`
+    return `${(amount / 1e8).toFixed(1)}亿`
+  }
+
   const { options, stats } = useMemo(() => {
     if (data.length === 0) {
       return { options: {}, stats: null }
@@ -20,14 +28,16 @@ export function AmountChart({ data = [], loading = false }: AmountChartProps) {
       return `${date[1]}/${date[2]}`
     })
 
-    const amounts = data.map((d) => {
+    // 原始数据（单位：元）
+    const rawAmounts = data.map((d) => {
       const amt = typeof d.totalAmount === 'number' ? d.totalAmount : parseFloat(d.totalAmount || '0')
-      return amt / 1e8 // 转换为亿
+      return amt
     })
 
-    const maxAmt = Math.max(...amounts)
-    const minAmt = Math.min(...amounts)
-    const avgAmt = amounts.reduce((a, b) => a + b, 0) / amounts.length
+    const maxAmt = Math.max(...rawAmounts)
+    const minAmt = Math.min(...rawAmounts)
+    const avgAmt = rawAmounts.reduce((a, b) => a + b, 0) / rawAmounts.length
+    const latestAmt = rawAmounts[0]
 
     const options = {
       tooltip: {
@@ -38,11 +48,12 @@ export function AmountChart({ data = [], loading = false }: AmountChartProps) {
         textStyle: { color: '#374151' },
         formatter: (params: any) => {
           const item = params[0]
+          const rawValue = item.data
           return `
             <div style="padding: 8px 12px;">
               <div style="font-weight: 600; margin-bottom: 4px; color: #111827;">${item.name}</div>
               <div style="color: #3b82f6; font-size: 16px; font-weight: bold;">
-                ${item.value.toFixed(1)}亿
+                ${formatAmount(rawValue)}
               </div>
             </div>
           `
@@ -62,17 +73,16 @@ export function AmountChart({ data = [], loading = false }: AmountChartProps) {
       },
       yAxis: {
         type: 'value',
-        name: '亿元',
         splitLine: { lineStyle: { color: '#f3f4f6', type: 'dashed' } },
         axisLabel: {
           color: '#6b7280',
           fontSize: 11,
-          formatter: (v: number) => v.toFixed(0),
+          formatter: (v: number) => formatAmount(v),
         },
       },
       series: [
         {
-          data: amounts,
+          data: rawAmounts,
           type: 'line',
           smooth: true,
           symbol: 'circle',
@@ -107,7 +117,7 @@ export function AmountChart({ data = [], loading = false }: AmountChartProps) {
 
     return {
       options,
-      stats: { maxAmt, minAmt, avgAmt, latest: amounts[amounts.length - 1] },
+      stats: { maxAmt, minAmt, avgAmt, latest: latestAmt },
     }
   }, [data])
 
@@ -139,7 +149,7 @@ export function AmountChart({ data = [], loading = false }: AmountChartProps) {
           <p className="text-sm text-gray-500 mt-1">沪深两市总成交额 · 近 {data.length} 天</p>
         </div>
         <div className="text-right">
-          <div className="text-2xl font-bold text-blue-600">{stats?.latest.toFixed(1)}亿</div>
+          <div className="text-2xl font-bold text-blue-600">{formatAmount(stats?.latest || 0)}</div>
           <div className="text-xs text-gray-400">最新</div>
         </div>
       </div>
@@ -155,15 +165,15 @@ export function AmountChart({ data = [], loading = false }: AmountChartProps) {
       <div className="mt-4 grid grid-cols-3 gap-4 text-center pt-4 border-t border-gray-100 flex-shrink-0">
         <div>
           <div className="text-xs text-gray-400">最高</div>
-          <div className="text-sm font-semibold text-gray-700">{stats?.maxAmt.toFixed(1)}亿</div>
+          <div className="text-sm font-semibold text-gray-700">{formatAmount(stats?.maxAmt || 0)}</div>
         </div>
         <div>
           <div className="text-xs text-gray-400">最低</div>
-          <div className="text-sm font-semibold text-gray-700">{stats?.minAmt.toFixed(1)}亿</div>
+          <div className="text-sm font-semibold text-gray-700">{formatAmount(stats?.minAmt || 0)}</div>
         </div>
         <div>
           <div className="text-xs text-gray-400">平均</div>
-          <div className="text-sm font-semibold text-gray-700">{stats?.avgAmt.toFixed(1)}亿</div>
+          <div className="text-sm font-semibold text-gray-700">{formatAmount(stats?.avgAmt || 0)}</div>
         </div>
       </div>
     </div>
