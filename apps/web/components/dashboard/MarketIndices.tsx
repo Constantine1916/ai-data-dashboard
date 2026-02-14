@@ -26,9 +26,7 @@ export function MarketIndices({ initialData }: MarketIndicesProps) {
     if (!initialData) {
       fetchIndices()
     }
-    // 每60秒自动刷新
-    const interval = setInterval(fetchIndices, 60000)
-    return () => clearInterval(interval)
+    // 不自动刷新，只在页面加载时获取一次
   }, [initialData])
 
   const fetchIndices = async () => {
@@ -52,7 +50,7 @@ export function MarketIndices({ initialData }: MarketIndicesProps) {
   }
 
   const formatAmount = (amount: number) => {
-    if (amount <= 0) return '-'  // 腾讯API对指数不返回成交额
+    if (amount <= 0) return ''  // 腾讯API对指数不返回成交额
     if (amount >= 1e12) return `${(amount / 1e12).toFixed(2)}万亿`
     if (amount >= 1e11) return `${(amount / 1e11).toFixed(1)}千亿`
     if (amount >= 1e10) return `${(amount / 1e10).toFixed(1)}百亿`
