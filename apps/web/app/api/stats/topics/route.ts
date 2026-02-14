@@ -41,13 +41,12 @@ export const GET = createRouteHandler({
         )
       }
 
-      // 获取指定日期的题材数据
+      // 获取指定日期的题材数据（获取更多数据用于合并）
       const { data, error } = await supabase
         .from('topic_rankings')
         .select('topic_code, topic_name, change_percent, close_price, rank')
         .eq('stat_date', date)
         .order('change_percent', { ascending: false })
-        .limit(10)
 
       if (error) {
         console.error('[API] 查询题材数据失败:', error)
@@ -57,13 +56,44 @@ export const GET = createRouteHandler({
         )
       }
 
-      // 格式化返回数据
-      const topics = (data || []).map((item: TopicRow) => ({
-        topicCode: item.topic_code,
-        topicName: item.topic_name,
-        changePercent: item.change_percent,
-        closePrice: item.close_price,
-      }))
+      // 合并相同板块的 I、II、III 层级
+      // 例如：航空装备Ⅲ + 航空装备Ⅱ → 航空装备
+      const mergedMap = new Map<string, TopicRow>()
+      
+      for (const item of (data || [])) {
+        // 去掉层级后缀：航空装备Ⅲ → 航空装备
+        const baseName = item.topic_name.replace(/[ⅠⅡⅢⅠⅡⅢ]+$/, '').trim()
+        
+        if (!mergedMap.has(baseName)) {
+          // 第一次遇到，添加到 map
+          mergedMap.set(baseName, {
+            topic_code: item.topic_code,
+            topic_name: baseName,
+            change_percent: item.change_percent,
+            close_price: item.close_price,
+            rank: item.rank,
+          })
+        } else {
+          // 已存在，比较涨幅，保留最高的
+          const existing = mergedMap.get(baseName)!
+          if (item.change_percent > existing.change_percent) {
+            existing.change_percent = item.change_percent
+            existing.close_price = item.close_price
+            existing.topic_code = item.topic_code
+          }
+        }
+      }
+
+      // 转换为数组并按涨幅排序，取 TOP10
+      const topics = Array.from(mergedMap.values())
+        .sort((a, b) => b.change_percent - a.change_percent)
+        .slice(0, 10)
+        .map((item) => ({
+          topicCode: item.topic_code,
+          topicName: item.topic_name,
+          changePercent: item.change_percent,
+          closePrice: item.close_price,
+        }))
 
       return NextResponse.json(createSuccessResponse(topics))
     } catch (error: any) {
