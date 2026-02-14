@@ -115,13 +115,6 @@ export function MarketIndices({ initialData }: MarketIndicesProps) {
               更新: {lastUpdate}
             </span>
           )}
-          <button
-            onClick={fetchIndices}
-            disabled={loading}
-            className="text-sm text-blue-600 hover:text-blue-800 disabled:opacity-50"
-          >
-            {loading ? '刷新中...' : '刷新'}
-          </button>
         </div>
       </div>
 
