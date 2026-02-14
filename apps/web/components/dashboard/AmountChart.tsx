@@ -37,7 +37,8 @@ export function AmountChart({ data = [], loading = false }: AmountChartProps) {
     const maxAmt = Math.max(...rawAmounts)
     const minAmt = Math.min(...rawAmounts)
     const avgAmt = rawAmounts.reduce((a, b) => a + b, 0) / rawAmounts.length
-    const latestAmt = rawAmounts[0]
+    // 数据已按日期升序排列（02-09 → 02-13），最新的是最后一个
+    const latestAmt = rawAmounts[rawAmounts.length - 1]
 
     const options = {
       tooltip: {
