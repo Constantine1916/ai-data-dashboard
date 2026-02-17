@@ -2,7 +2,7 @@ import { query } from '@/lib/db'
 import { supabase } from '@/lib/db/supabase'
 import type { DailyMarketStats, TopicRanking } from '@/types/market'
 import { TencentService } from './tencent'
-import { isTradingDay, getLatestTradingDay } from './trading-day'
+import { getLatestTradingDay } from './trading-day'
 
 // 优先使用 Supabase 客户端
 const useSupabase = !!process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -105,7 +105,7 @@ export class MarketStatsService {
 
   /**
    * 获取近N天的市场统计数据
-   * 自动过滤掉非交易日（通过API判断）
+   * 过滤掉非交易日数据（通过数据有效性判断：涨停+跌停 > 0）
    */
   static async getRecentStats(days = 30): Promise<DailyMarketStats[]> {
     if (useSupabase) {
@@ -120,18 +120,10 @@ export class MarketStatsService {
       
       if (error) throw error
       
-      // 过滤非交易日
-      const allStats = (data || []).map(this.mapDbToDailyStats)
-      const tradingStats: DailyMarketStats[] = []
-      
-      for (const stat of allStats) {
-        const isTrading = await isTradingDay(stat.statDate)
-        // 保留今日数据（即使非交易时段），过滤历史非交易日
-        const today = new Date(new Date().getTime() + 8 * 60 * 60 * 1000).toISOString().split('T')[0]
-        if (stat.statDate === today || isTrading) {
-          tradingStats.push(stat)
-        }
-      }
+      // 过滤非交易日：涨停+跌停都为0的是非交易日数据
+      const tradingStats = (data || [])
+        .map(this.mapDbToDailyStats)
+        .filter(stat => stat.limitUpCount > 0 || stat.limitDownCount > 0)
       
       return tradingStats
     } else {
@@ -143,50 +135,19 @@ export class MarketStatsService {
 
       const result = await query(sql)
       // 过滤非交易日
-      const allStats = result.map(this.mapDbToDailyStats)
-      const tradingStats: DailyMarketStats[] = []
-      
-      for (const stat of allStats) {
-        const isTrading = await isTradingDay(stat.statDate)
-        const today = new Date(new Date().getTime() + 8 * 60 * 60 * 1000).toISOString().split('T')[0]
-        if (stat.statDate === today || isTrading) {
-          tradingStats.push(stat)
-        }
-      }
-      
-      return tradingStats
+      return result
+        .map(this.mapDbToDailyStats)
+        .filter(stat => stat.limitUpCount > 0 || stat.limitDownCount > 0)
     }
   }
 
   /**
    * 获取今日市场统计数据
-   * 如果今日不是交易日，返回最后一个交易日的数据
+   * 如果今日不是交易日或数据无效，返回最后一个交易日的数据
    */
   static async getTodayStats(): Promise<(DailyMarketStats & { isFallback?: boolean; tradingDate?: string }) | null> {
     // 使用北京时间 (UTC+8) 获取今天日期
     const today = new Date(new Date().getTime() + 8 * 60 * 60 * 1000).toISOString().split('T')[0]
-
-    // 先判断今天是否为交易日
-    const todayIsTrading = await isTradingDay(today)
-    
-    // 检查数据库中的数据是否为有效交易日数据（非0或非空）
-    const isValidTradingData = async (date: string): Promise<boolean> => {
-      if (useSupabase) {
-        const { data } = await supabase
-          .from('daily_market_stats')
-          .select('limit_up_count, limit_down_count')
-          .eq('stat_date', date)
-          .limit(1)
-          .maybeSingle()
-        
-        // 如果涨停和跌停都是0，可能是非交易日采集的脏数据
-        if (data) {
-          return data.limit_up_count > 0 || data.limit_down_count > 0
-        }
-        return false
-      }
-      return false
-    }
 
     if (useSupabase) {
       // 先尝试获取今天的数据
@@ -200,18 +161,15 @@ export class MarketStatsService {
 
       if (error) throw error
       
-      // 如果今天是交易日且有有效数据，返回今日数据
-      if (data && todayIsTrading) {
-        const valid = await isValidTradingData(today)
-        if (valid) {
-          return {
-            ...this.mapDbToDailyStats(data),
-            tradingDate: today
-          }
+      // 检查今日数据是否有效（非0数据）
+      if (data && (data.limit_up_count > 0 || data.limit_down_count > 0)) {
+        return {
+          ...this.mapDbToDailyStats(data),
+          tradingDate: today
         }
       }
 
-      // 否则获取最近一个有有效数据的交易日
+      // 今日数据无效，获取最近一个有有效数据的交易日
       const latestDate = await getLatestTradingDay()
       const { data: latestData, error: latestError } = await supabase
         .from('daily_market_stats')
@@ -241,9 +199,9 @@ export class MarketStatsService {
         LIMIT 1
       `
 
-      const result = await query(sql, [today])
+      const result = await query(sql, [today]) as any[]
       
-      if (result.length > 0 && todayIsTrading) {
+      if (result.length > 0 && (result[0].limit_up_count > 0 || result[0].limit_down_count > 0)) {
         return {
           ...this.mapDbToDailyStats(result[0]),
           tradingDate: today
