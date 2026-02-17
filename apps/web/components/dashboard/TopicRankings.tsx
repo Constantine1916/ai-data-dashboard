@@ -7,39 +7,17 @@ export function TopicRankings() {
   const [topics, setTopics] = useState<TopicRanking[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [selectedDate, setSelectedDate] = useState<string>('')
-  const [dates, setDates] = useState<string[]>([])
-
-  // 初始化：获取最近交易日
-  useEffect(() => {
-    const initDate = async () => {
-      try {
-        // 获取今日统计数据（包含最近交易日信息）
-        const res = await fetch('/api/stats/today')
-        const data = await res.json()
-        
-        if (data.success && data.data) {
-          const tradingDate = data.data.tradingDate || data.data.statDate
-          setSelectedDate(tradingDate)
-        } else {
-          // 如果API失败，使用默认逻辑
-          setSelectedDate(getDefaultDate())
-        }
-        
-        // 生成可选日期
-        setDates(await getAvailableDates())
-      } catch (err) {
-        setSelectedDate(getDefaultDate())
-        setDates(await getAvailableDates())
-      }
-    }
-    initDate()
-  }, [])
+  const [selectedDate, setSelectedDate] = useState<string>(() => {
+    // 默认今天，如果今天没数据则往前找
+    const today = new Date()
+    const yyyy = today.getFullYear()
+    const mm = String(today.getMonth() + 1).padStart(2, '0')
+    const dd = String(today.getDate()).padStart(2, '0')
+    return `${yyyy}-${mm}-${dd}`
+  })
 
   useEffect(() => {
-    if (selectedDate) {
-      fetchTopics(selectedDate)
-    }
+    fetchTopics(selectedDate)
   }, [selectedDate])
 
   const fetchTopics = async (date: string) => {
@@ -64,23 +42,14 @@ export function TopicRankings() {
     }
   }
 
-  // 生成可选日期（交易日）
-  const getAvailableDates = async (): Promise<string[]> => {
+  // 生成可选日期（今天及之前）
+  const getAvailableDates = () => {
     const dates: string[] = []
     const today = new Date()
-    const todayStr = today.toISOString().split('T')[0]
     
-    // 检查今天是否是交易日
-    const isTrading = await fetch(`/api/stats/today`).then(r => r.json())
-    let latestTradingDate = todayStr
-    
-    if (isTrading.success && isTrading.data?.tradingDate) {
-      latestTradingDate = isTrading.data.tradingDate
-    }
-    
-    // 从最新交易日起往前找30天
+    // 最多显示最近30天
     for (let i = 0; i < 30; i++) {
-      const date = new Date(latestTradingDate)
+      const date = new Date(today)
       date.setDate(date.getDate() - i)
       
       // 跳过周末
@@ -92,15 +61,6 @@ export function TopicRankings() {
       dates.push(`${yyyy}-${mm}-${dd}`)
     }
     return dates
-  }
-
-  // 获取默认日期（最后一个交易日）
-  const getDefaultDate = (): string => {
-    const today = new Date()
-    const yyyy = today.getFullYear()
-    const mm = String(today.getMonth() + 1).padStart(2, '0')
-    const dd = String(today.getDate()).padStart(2, '0')
-    return `${yyyy}-${mm}-${dd}`
   }
 
   // 格式化日期显示
@@ -136,7 +96,7 @@ export function TopicRankings() {
           onChange={(e) => setSelectedDate(e.target.value)}
           className="text-sm border border-gray-200 rounded-lg px-3 py-1.5 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
         >
-          {dates.map((date) => (
+          {getAvailableDates().map((date) => (
             <option key={date} value={date}>
               {formatDateDisplay(date)}
             </option>
