@@ -4,19 +4,9 @@ import { createSuccessResponse, createErrorResponse } from '@/lib/shared'
 import { MarketStatsService } from '@/lib/services/market-stats'
 
 /**
- * 过滤掉周末（周六、周日）的日期
- */
-function isWeekend(dateStr: string): boolean {
-  const date = new Date(dateStr)
-  const day = date.getDay()
-  // 0 = 周日, 6 = 周六
-  return day === 0 || day === 6
-}
-
-/**
  * GET /api/stats/history?days=30
  * 获取近N天的市场统计数据（用于折线图）
- * 自动过滤掉周末（周六、周日）的数据
+ * 自动过滤掉非交易日（由 getRecentStats 过滤）
  */
 export const GET = createRouteHandler({
   GET: async (request) => {
@@ -31,10 +21,7 @@ export const GET = createRouteHandler({
         )
       }
 
-      let stats = await MarketStatsService.getRecentStats(days)
-
-      // 过滤掉周末数据
-      stats = stats.filter(s => !isWeekend(s.statDate))
+      const stats = await MarketStatsService.getRecentStats(days)
 
       return NextResponse.json(createSuccessResponse(stats))
     } catch (error: any) {
