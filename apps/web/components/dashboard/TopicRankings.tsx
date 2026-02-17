@@ -7,17 +7,42 @@ export function TopicRankings() {
   const [topics, setTopics] = useState<TopicRanking[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [selectedDate, setSelectedDate] = useState<string>(() => {
-    // 默认今天，如果今天没数据则往前找
-    const today = new Date()
-    const yyyy = today.getFullYear()
-    const mm = String(today.getMonth() + 1).padStart(2, '0')
-    const dd = String(today.getDate()).padStart(2, '0')
-    return `${yyyy}-${mm}-${dd}`
-  })
+  const [selectedDate, setSelectedDate] = useState<string>('')
+
+  // 初始化：获取最近有数据的交易日
+  useEffect(() => {
+    const initDate = async () => {
+      try {
+        // 从 today API 获取最近交易日
+        const res = await fetch('/api/stats/today')
+        const data = await res.json()
+        
+        if (data.success && data.data?.tradingDate) {
+          setSelectedDate(data.data.tradingDate)
+        } else {
+          // Fallback: 使用今天
+          const today = new Date()
+          const yyyy = today.getFullYear()
+          const mm = String(today.getMonth() + 1).padStart(2, '0')
+          const dd = String(today.getDate()).padStart(2, '0')
+          setSelectedDate(`${yyyy}-${mm}-${dd}`)
+        }
+      } catch (err) {
+        // Fallback
+        const today = new Date()
+        const yyyy = today.getFullYear()
+        const mm = String(today.getMonth() + 1).padStart(2, '0')
+        const dd = String(today.getDate()).padStart(2, '0')
+        setSelectedDate(`${yyyy}-${mm}-${dd}`)
+      }
+    }
+    initDate()
+  }, [])
 
   useEffect(() => {
-    fetchTopics(selectedDate)
+    if (selectedDate) {
+      fetchTopics(selectedDate)
+    }
   }, [selectedDate])
 
   const fetchTopics = async (date: string) => {
@@ -28,8 +53,17 @@ export function TopicRankings() {
       const data = await res.json()
 
       if (data.success) {
-        setTopics(data.data)
-        if (data.data.length === 0) {
+        if (data.data && data.data.length > 0) {
+          setTopics(data.data)
+        } else {
+          // 该日期无数据，尝试找前一个交易日
+          const prevDate = await findPreviousTradingDate(date)
+          if (prevDate && prevDate !== date) {
+            setSelectedDate(prevDate)
+            // 不要在这里setLoading(false)，让useEffect重新触发
+            return
+          }
+          setTopics([])
           setError('暂无数据')
         }
       } else {
@@ -40,6 +74,29 @@ export function TopicRankings() {
     } finally {
       setLoading(false)
     }
+  }
+
+  // 找前一个交易日
+  const findPreviousTradingDate = async (fromDate: string): Promise<string | null> => {
+    const date = new Date(fromDate)
+    for (let i = 1; i <= 10; i++) {
+      date.setDate(date.getDate() - 1)
+      // 跳过周末
+      if (date.getDay() === 0 || date.getDay() === 6) continue
+      
+      const yyyy = date.getFullYear()
+      const mm = String(date.getMonth() + 1).padStart(2, '0')
+      const dd = String(date.getDate()).padStart(2, '0')
+      const checkDate = `${yyyy}-${mm}-${dd}`
+      
+      // 检查这天是否有数据
+      const res = await fetch(`/api/stats/topics?date=${checkDate}`)
+      const data = await res.json()
+      if (data.success && data.data && data.data.length > 0) {
+        return checkDate
+      }
+    }
+    return null
   }
 
   // 生成可选日期（今天及之前）
