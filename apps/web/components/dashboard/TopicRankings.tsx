@@ -13,37 +13,36 @@ export function TopicRankings() {
   useEffect(() => {
     const initDate = async () => {
       try {
+        // 先显示空或加载状态
+        setLoading(true)
+        
         // 从 today API 获取最近交易日
         const res = await fetch('/api/stats/today')
         const data = await res.json()
         
+        let dateToFetch
         if (data.success && data.data?.tradingDate) {
-          setSelectedDate(data.data.tradingDate)
+          dateToFetch = data.data.tradingDate
         } else {
           // Fallback: 使用今天
           const today = new Date()
           const yyyy = today.getFullYear()
           const mm = String(today.getMonth() + 1).padStart(2, '0')
           const dd = String(today.getDate()).padStart(2, '0')
-          setSelectedDate(`${yyyy}-${mm}-${dd}`)
+          dateToFetch = `${yyyy}-${mm}-${dd}`
         }
+        
+        setSelectedDate(dateToFetch)
+        // 初始加载时也用自动模式
+        await fetchTopics(dateToFetch, false)
       } catch (err) {
-        // Fallback
-        const today = new Date()
-        const yyyy = today.getFullYear()
-        const mm = String(today.getMonth() + 1).padStart(2, '0')
-        const dd = String(today.getDate()).padStart(2, '0')
-        setSelectedDate(`${yyyy}-${mm}-${dd}`)
+        setLoading(false)
       }
     }
     initDate()
   }, [])
 
-  useEffect(() => {
-    if (selectedDate) {
-      fetchTopics(selectedDate, false) // 初始加载为自动模式
-    }
-  }, [selectedDate])
+  // 不再使用 useEffect 监听 selectedDate，全部在 onChange 中处理
 
   const fetchTopics = async (date: string, isManualSelect: boolean = false) => {
     try {
