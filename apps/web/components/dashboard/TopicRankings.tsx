@@ -41,11 +41,11 @@ export function TopicRankings() {
 
   useEffect(() => {
     if (selectedDate) {
-      fetchTopics(selectedDate)
+      fetchTopics(selectedDate, false) // 初始加载为自动模式
     }
   }, [selectedDate])
 
-  const fetchTopics = async (date: string) => {
+  const fetchTopics = async (date: string, isManualSelect: boolean = false) => {
     try {
       setLoading(true)
       setError(null)
@@ -56,18 +56,35 @@ export function TopicRankings() {
         if (data.data && data.data.length > 0) {
           setTopics(data.data)
         } else {
-          // 该日期无数据，尝试找前一个交易日
+          // 该日期无数据
+          if (isManualSelect) {
+            // 用户手动选择的日期，没数据就显示暂无数据
+            setTopics([])
+            setError(`${date} 暂无题材数据`)
+          } else {
+            // 自动查找的日期，没数据就往前找
+            const prevDate = await findPreviousTradingDate(date)
+            if (prevDate && prevDate !== date) {
+              setSelectedDate(prevDate)
+              return
+            }
+            setTopics([])
+            setError('暂无数据')
+          }
+        }
+      } else {
+        // API返回错误（非交易日等）
+        if (isManualSelect) {
+          setError(data.error?.message || '获取数据失败')
+        } else {
+          // 自动查找时遇到错误日期，往前找
           const prevDate = await findPreviousTradingDate(date)
           if (prevDate && prevDate !== date) {
             setSelectedDate(prevDate)
-            // 不要在这里setLoading(false)，让useEffect重新触发
             return
           }
-          setTopics([])
           setError('暂无数据')
         }
-      } else {
-        setError(data.error?.message || '获取数据失败')
       }
     } catch (err: any) {
       setError(err.message || '网络错误')
@@ -153,7 +170,10 @@ export function TopicRankings() {
         {/* 日期选择器 */}
         <select
           value={selectedDate}
-          onChange={(e) => setSelectedDate(e.target.value)}
+          onChange={(e) => {
+            setSelectedDate(e.target.value)
+            fetchTopics(e.target.value, true) // 手动选择为手动模式
+          }}
           className="text-sm border border-gray-200 rounded-lg px-3 py-1.5 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
         >
           {getAvailableDates().map((date) => (
