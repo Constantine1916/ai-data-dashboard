@@ -2,6 +2,7 @@ import { query } from '@/lib/db'
 import { supabase } from '@/lib/db/supabase'
 import type { DailyMarketStats, TopicRanking } from '@/types/market'
 import { TencentService } from './tencent'
+import { getLatestTradingDay, isTradingDay } from './trading-day'
 
 // 优先使用 Supabase 客户端
 const useSupabase = !!process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -132,33 +133,83 @@ export class MarketStatsService {
 
   /**
    * 获取今日市场统计数据
+   * 始终判断是否为交易日期：
+   * - 交易日：显示今日数据
+   * - 非交易日：显示最后一个交易日的数据
    */
-  static async getTodayStats(): Promise<DailyMarketStats | null> {
+  static async getTodayStats(): Promise<(DailyMarketStats & { isFallback?: boolean; tradingDate?: string }) | null> {
     // 使用北京时间 (UTC+8) 获取今天日期
-    // 避免服务器UTC时区导致的数据查询错误
     const today = new Date(new Date().getTime() + 8 * 60 * 60 * 1000).toISOString().split('T')[0]
 
+    // 先判断今天是否为交易日
+    const todayIsTrading = await isTradingDay(today)
+    
+    if (!todayIsTrading) {
+      // 今日非交易日，获取最近一个交易日
+      const latestDate = await getLatestTradingDay()
+      return this.getStatsByDate(latestDate, true)
+    }
+
+    // 今天是交易日，获取今日数据
+    return this.getStatsByDate(today, false)
+  }
+
+  /**
+   * 根据日期获取统计数据
+   */
+  private static async getStatsByDate(date: string, isFallback: boolean): Promise<(DailyMarketStats & { isFallback?: boolean; tradingDate?: string }) | null> {
     if (useSupabase) {
       const { data, error } = await supabase
         .from('daily_market_stats')
         .select('*')
-        .eq('stat_date', today)
+        .eq('stat_date', date)
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle()
 
       if (error) throw error
-      return data ? this.mapDbToDailyStats(data) : null
+      
+      if (data) {
+        return {
+          ...this.mapDbToDailyStats(data),
+          isFallback,
+          tradingDate: date
+        }
+      }
+      
+      // 该日期无数据，递归获取更早的交易日
+      if (!isFallback) {
+        const latestDate = await getLatestTradingDay()
+        return this.getStatsByDate(latestDate, true)
+      }
+      
+      return null
     } else {
+      // PostgreSQL 版本
       const sql = `
         SELECT * FROM daily_market_stats
-        WHERE stat_date = CURRENT_DATE
+        WHERE stat_date = $1
         ORDER BY created_at DESC
         LIMIT 1
       `
 
-      const result = await query(sql)
-      return result.length > 0 ? this.mapDbToDailyStats(result[0]) : null
+      const result = await query(sql, [date])
+      
+      if (result.length > 0) {
+        return {
+          ...this.mapDbToDailyStats(result[0]),
+          isFallback,
+          tradingDate: date
+        }
+      }
+      
+      // 该日期无数据
+      if (!isFallback) {
+        const latestDate = await getLatestTradingDay()
+        return this.getStatsByDate(latestDate, true)
+      }
+      
+      return null
     }
   }
 
