@@ -89,9 +89,12 @@ export function TopicRankings() {
       const dd = String(date.getDate()).padStart(2, '0')
       const checkDate = `${yyyy}-${mm}-${dd}`
       
-      // 检查这天是否有数据
+      // 检查这天是否有数据且不是周末
+      if (date.getDay() === 0 || date.getDay() === 6) continue
+      
       const res = await fetch(`/api/stats/topics?date=${checkDate}`)
       const data = await res.json()
+      // 如果成功且有数据，或者返回"非交易日"错误，继续往前找
       if (data.success && data.data && data.data.length > 0) {
         return checkDate
       }
