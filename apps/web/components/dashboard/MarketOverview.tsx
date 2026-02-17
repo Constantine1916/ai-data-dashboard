@@ -7,8 +7,13 @@ interface MarketOverviewProps {
   todayStats?: DailyMarketStats | null
 }
 
+interface MarketStatsWithFallback extends DailyMarketStats {
+  isFallback?: boolean
+  tradingDate?: string
+}
+
 export function MarketOverview({ todayStats: initialStats }: MarketOverviewProps) {
-  const [stats, setStats] = useState<DailyMarketStats | null>(initialStats || null)
+  const [stats, setStats] = useState<MarketStatsWithFallback | null>(null)
   const [loading, setLoading] = useState(!initialStats)
   const [error, setError] = useState<string | null>(null)
 
@@ -119,8 +124,17 @@ export function MarketOverview({ todayStats: initialStats }: MarketOverviewProps
   return (
     <div className="space-y-4">
       <div className="flex justify-between items-center">
-        <h2 className="text-lg font-semibold text-gray-900">今日市场概览</h2>
-        <span className="text-sm text-gray-500">{stats.statDate}</span>
+        <h2 className="text-lg font-semibold text-gray-900">
+          {stats?.isFallback ? '📅 最近交易日' : '📊 今日市场'}
+        </h2>
+        <div className="flex items-center gap-2">
+          {stats?.isFallback && (
+            <span className="text-xs bg-yellow-100 text-yellow-800 px-2 py-1 rounded">
+              非交易日，显示 {stats.tradingDate} 数据
+            </span>
+          )}
+          <span className="text-sm text-gray-500">{stats?.tradingDate || stats?.statDate}</span>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
