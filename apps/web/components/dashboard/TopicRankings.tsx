@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import type { TopicRanking } from '@/types/market'
 
 export function TopicRankings() {
@@ -8,12 +8,12 @@ export function TopicRankings() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [selectedDate, setSelectedDate] = useState<string>('')
+  const isInitialLoad = useRef(true)
 
-  // 初始化：获取最近有数据的交易日
+  // 初始化：获取最近交易日
   useEffect(() => {
-    const initDate = async () => {
+    const init = async () => {
       try {
-        // 先显示空或加载状态
         setLoading(true)
         
         // 从 today API 获取最近交易日
@@ -24,62 +24,57 @@ export function TopicRankings() {
         if (data.success && data.data?.tradingDate) {
           dateToFetch = data.data.tradingDate
         } else {
-          // Fallback: 使用今天
           const today = new Date()
-          const yyyy = today.getFullYear()
-          const mm = String(today.getMonth() + 1).padStart(2, '0')
-          const dd = String(today.getDate()).padStart(2, '0')
-          dateToFetch = `${yyyy}-${mm}-${dd}`
+          dateToFetch = today.toISOString().split('T')[0]
         }
         
         setSelectedDate(dateToFetch)
-        // 初始加载时也用自动模式
-        await fetchTopics(dateToFetch, false)
+        await fetchTopics(dateToFetch, true) // 初始加载视为手动选择
+        isInitialLoad.current = false
       } catch (err) {
         setLoading(false)
+        isInitialLoad.current = false
       }
     }
-    initDate()
+    init()
   }, [])
 
-  // 不再使用 useEffect 监听 selectedDate，全部在 onChange 中处理
-
-  const fetchTopics = async (date: string, isManualSelect: boolean = false) => {
+  const fetchTopics = async (date: string, isManual: boolean = false) => {
     try {
       setLoading(true)
       setError(null)
+      
       const res = await fetch(`/api/stats/topics?date=${date}`)
       const data = await res.json()
 
       if (data.success) {
         if (data.data && data.data.length > 0) {
           setTopics(data.data)
+        } else if (isManual) {
+          setTopics([])
+          setError(`${date} 暂无题材数据`)
         } else {
-          // 该日期无数据
-          if (isManualSelect) {
-            // 用户手动选择的日期，没数据就显示暂无数据
-            setTopics([])
-            setError(`${date} 暂无题材数据`)
-          } else {
-            // 自动查找的日期，没数据就往前找
-            const prevDate = await findPreviousTradingDate(date)
-            if (prevDate && prevDate !== date) {
-              setSelectedDate(prevDate)
-              return
-            }
-            setTopics([])
-            setError('暂无数据')
-          }
-        }
-      } else {
-        // API返回错误（非交易日等）
-        if (isManualSelect) {
-          setError(data.error?.message || '获取数据失败')
-        } else {
-          // 自动查找时遇到错误日期，往前找
-          const prevDate = await findPreviousTradingDate(date)
+          // 自动模式：往前找
+          setTopics([])
+          // 尝试找前一个交易日
+          const prevDate = await findPrevDate(date)
           if (prevDate && prevDate !== date) {
             setSelectedDate(prevDate)
+            await fetchTopics(prevDate, false)
+            return
+          }
+          setError('暂无数据')
+        }
+      } else {
+        // API返回错误
+        if (isManual) {
+          setError(data.error?.message || '获取数据失败')
+        } else {
+          setTopics([])
+          const prevDate = await findPrevDate(date)
+          if (prevDate && prevDate !== date) {
+            setSelectedDate(prevDate)
+            await fetchTopics(prevDate, false)
             return
           }
           setError('暂无数据')
@@ -92,43 +87,34 @@ export function TopicRankings() {
     }
   }
 
-  // 找前一个交易日
-  const findPreviousTradingDate = async (fromDate: string): Promise<string | null> => {
+  // 找前一个可能有数据的日期（跳过周末）
+  const findPrevDate = async (fromDate: string): Promise<string | null> => {
     const date = new Date(fromDate)
     for (let i = 1; i <= 10; i++) {
       date.setDate(date.getDate() - 1)
-      // 跳过周末
-      if (date.getDay() === 0 || date.getDay() === 6) continue
+      if (date.getDay() === 0 || date.getDay() === 6) continue // 跳过周末
       
       const yyyy = date.getFullYear()
       const mm = String(date.getMonth() + 1).padStart(2, '0')
       const dd = String(date.getDate()).padStart(2, '0')
-      const checkDate = `${yyyy}-${mm}-${dd}`
-      
-      // 检查这天是否有数据且不是周末
-      if (date.getDay() === 0 || date.getDay() === 6) continue
-      
-      const res = await fetch(`/api/stats/topics?date=${checkDate}`)
-      const data = await res.json()
-      // 如果成功且有数据，或者返回"非交易日"错误，继续往前找
-      if (data.success && data.data && data.data.length > 0) {
-        return checkDate
-      }
+      return `${yyyy}-${mm}-${dd}`
     }
     return null
   }
 
-  // 生成可选日期（今天及之前）
+  const handleDateChange = (date: string) => {
+    setSelectedDate(date)
+    fetchTopics(date, true) // 手动选择
+  }
+
+  // 生成可选日期（最近30天，跳过周末）
   const getAvailableDates = () => {
     const dates: string[] = []
     const today = new Date()
     
-    // 最多显示最近30天
     for (let i = 0; i < 30; i++) {
       const date = new Date(today)
       date.setDate(date.getDate() - i)
-      
-      // 跳过周末
       if (date.getDay() === 0 || date.getDay() === 6) continue
       
       const yyyy = date.getFullYear()
@@ -139,13 +125,10 @@ export function TopicRankings() {
     return dates
   }
 
-  // 格式化日期显示
   const formatDateDisplay = (dateStr: string) => {
     const date = new Date(dateStr)
     const weekDays = ['周日', '周一', '周二', '周三', '周四', '周五', '周六']
-    const weekDay = weekDays[date.getDay()]
-    const mmdd = `${date.getMonth() + 1}/${date.getDate()}`
-    return `${mmdd} ${weekDay}`
+    return `${date.getMonth() + 1}/${date.getDate()} ${weekDays[date.getDay()]}`
   }
 
   if (loading) {
@@ -166,13 +149,9 @@ export function TopicRankings() {
       <div className="flex justify-between items-center mb-4 flex-shrink-0">
         <h3 className="text-lg font-semibold text-gray-900">📈 题材涨幅 TOP10</h3>
         
-        {/* 日期选择器 */}
         <select
           value={selectedDate}
-          onChange={(e) => {
-            setSelectedDate(e.target.value)
-            fetchTopics(e.target.value, true) // 手动选择为手动模式
-          }}
+          onChange={(e) => handleDateChange(e.target.value)}
           className="text-sm border border-gray-200 rounded-lg px-3 py-1.5 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
         >
           {getAvailableDates().map((date) => (
@@ -231,20 +210,10 @@ export function TopicRankings() {
       )}
 
       <style jsx global>{`
-        .custom-scrollbar::-webkit-scrollbar {
-          width: 4px;
-        }
-        .custom-scrollbar::-webkit-scrollbar-track {
-          background: #f3f4f6;
-          border-radius: 2px;
-        }
-        .custom-scrollbar::-webkit-scrollbar-thumb {
-          background: #d1d5db;
-          border-radius: 2px;
-        }
-        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-          background: #9ca3af;
-        }
+        .custom-scrollbar::-webkit-scrollbar { width: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: #f3f4f6; border-radius: 2px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 2px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #9ca3af; }
       `}</style>
     </div>
   )
