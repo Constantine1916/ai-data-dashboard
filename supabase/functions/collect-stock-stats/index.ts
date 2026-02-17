@@ -210,6 +210,31 @@ async function saveConcepts(date: string, concepts: ConceptData[]) {
   if (error) throw error
 }
 
+/**
+ * 判断是否为A股交易日期
+ */
+async function isTradingDay(dateStr: string): Promise<boolean> {
+  const dateFormatted = dateStr.replace(/-/g, '')
+  const url = `https://push2.eastmoney.com/api/qt/stock/get?secid=1.000001&fields=f2,f3,f6`
+  
+  try {
+    const res = await fetch(url)
+    const data = await res.json()
+    
+    // 如果 data 是空对象，说明是非交易日
+    const marketData = data?.data
+    if (!marketData || Object.keys(marketData).length === 0) {
+      return false
+    }
+    
+    const price = marketData?.f2
+    return price !== '-' && price !== undefined && price !== null
+  } catch (e) {
+    console.log(`判断交易日失败: ${e}`)
+    return false
+  }
+}
+
 serve(async (req: Request) => {
   const headers = new Headers({
     'Access-Control-Allow-Origin': '*',
@@ -224,6 +249,17 @@ serve(async (req: Request) => {
     const days = parseInt(url.searchParams.get('days') || '1')
     const today = new Date().toISOString().split('T')[0]
     const todayFormatted = today.replace(/-/g, '')
+    
+    // 检查今天是否为交易日
+    const todayIsTrading = await isTradingDay(today)
+    if (!todayIsTrading) {
+      console.log(`今日 ${today} 为非交易日，跳过采集`)
+      return new Response(JSON.stringify({
+        success: true,
+        skipped: true,
+        message: `今日 ${today} 为非交易日（节假日/周末），跳过数据采集`
+      }), { headers })
+    }
     
     console.log(`=== 开始采集近${days}日数据 ===`)
     
@@ -263,6 +299,13 @@ serve(async (req: Request) => {
       date.setDate(date.getDate() - i)
       const dateStr = date.toISOString().split('T')[0]
       const dateFormatted = dateStr.replace(/-/g, '')
+      
+      // 检查是否为交易日
+      const isTrading = await isTradingDay(dateStr)
+      if (!isTrading) {
+        console.log(`跳过 ${dateStr}（非交易日）`)
+        continue
+      }
       
       console.log(`采集 ${dateStr}...`)
       

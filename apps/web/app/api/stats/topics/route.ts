@@ -8,6 +8,15 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
+/**
+ * 验证日期是否为A股交易日（排除周末）
+ */
+function isWeekend(dateStr: string): boolean {
+  const date = new Date(dateStr)
+  const day = date.getDay()
+  return day === 0 || day === 6 // 周日或周六
+}
+
 interface TopicRow {
   topic_code: string
   topic_name: string
@@ -37,6 +46,14 @@ export const GET = createRouteHandler({
       if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
         return NextResponse.json(
           createErrorResponse('VALIDATION_ERROR', '日期格式错误，请使用 YYYY-MM-DD'),
+          { status: 400 }
+        )
+      }
+
+      // 验证是否为交易日（排除周末）
+      if (isWeekend(date)) {
+        return NextResponse.json(
+          createErrorResponse('NON_TRADING_DAY', `${date} 为周末，非交易日`),
           { status: 400 }
         )
       }
