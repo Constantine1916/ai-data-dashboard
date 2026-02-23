@@ -20,7 +20,7 @@ function DashboardContent() {
   useEffect(() => {
     const fetchHistory = async () => {
       try {
-        const res = await fetch('/api/stats/history?days=7')
+        const res = await fetch('/api/stats/history?days=30')
         const data = await res.json()
         if (data.success) {
           setHistoryData(data.data.reverse())
