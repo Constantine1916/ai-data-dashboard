@@ -33,7 +33,7 @@ async function getMarketData() {
   try {
     const output = execSync('python3 /root/clawd/ai-data-dashboard/get_market_data.py', {
       encoding: 'utf-8',
-      timeout: 60000
+      timeout: 120000  // 2分钟超时（概念板块API较慢）
     });
     
     console.log('Python 输出:', output);
