@@ -5,31 +5,19 @@ const supabase = createClient(
   'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVrYmpqa2N1cXFza3JhdWJvZ3psIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2OTM0NzMzNywiZXhwIjoyMDg0OTIzMzM3fQ.fgCOW2kyJHIQe2ombEW_GMoEWRukO_yix2-7zIktDQA'
 );
 
-// 动态判断是否为交易日（使用免费节假日API）
+// 动态判断是否为交易日
 async function isTradingDay(date) {
   const d = date instanceof Date ? date : new Date(date);
-  const dateStr = d.toISOString().split('T')[0];
+  const day = d.getDay();
   
-  try {
-    // 使用 timor.tech 免费API判断交易日
-    const response = await fetch(`http://timor.tech/api/holiday/info/${dateStr}`);
-    const data = await response.json();
-    
-    // type: 0=工作日, 1=周末, 2=节日, 3=调休
-    // 工作日(0)和调休(3)是交易日
-    if (data.code === 0 && data.type) {
-      const type = data.type.type;
-      return type === 0 || type === 3; // 工作日或调休
-    }
-    
-    // 如果API失败，回退到简单判断（周末）
-    const day = d.getDay();
-    return day !== 0 && day !== 6;
-  } catch (error) {
-    console.log('⚠️ 节假日API调用失败，回退到简单判断（周末）');
-    const day = d.getDay();
-    return day !== 0 && day !== 6;
+  // 简单判断：周六(6)、周日(0)不是交易日
+  if (day === 0 || day === 6) {
+    return false;
   }
+  
+  // 工作日大概率是交易日（但需要排除法定节假日）
+  // 这里先用简单逻辑，实际生产环境可以用 akshare 获取完整交易日历
+  return true;
 }
 
 async function getStockData() {
