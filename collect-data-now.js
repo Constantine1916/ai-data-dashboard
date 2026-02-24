@@ -5,6 +5,33 @@ const supabase = createClient(
   'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVrYmpqa2N1cXFza3JhdWJvZ3psIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2OTM0NzMzNywiZXhwIjoyMDg0OTIzMzM3fQ.fgCOW2kyJHIQe2ombEW_GMoEWRukO_yix2-7zIktDQA'
 );
 
+// 动态判断是否为交易日（使用免费节假日API）
+async function isTradingDay(date) {
+  const d = date instanceof Date ? date : new Date(date);
+  const dateStr = d.toISOString().split('T')[0];
+  
+  try {
+    // 使用 timor.tech 免费API判断交易日
+    const response = await fetch(`http://timor.tech/api/holiday/info/${dateStr}`);
+    const data = await response.json();
+    
+    // type: 0=工作日, 1=周末, 2=节日, 3=调休
+    // 工作日(0)和调休(3)是交易日
+    if (data.code === 0 && data.type) {
+      const type = data.type.type;
+      return type === 0 || type === 3; // 工作日或调休
+    }
+    
+    // 如果API失败，回退到简单判断（周末）
+    const day = d.getDay();
+    return day !== 0 && day !== 6;
+  } catch (error) {
+    console.log('⚠️ 节假日API调用失败，回退到简单判断（周末）');
+    const day = d.getDay();
+    return day !== 0 && day !== 6;
+  }
+}
+
 async function getStockData() {
   console.log('正在从东方财富API获取数据...\n');
   
@@ -98,7 +125,18 @@ async function getTopicData() {
 
 async function saveData() {
   try {
-    const today = new Date().toISOString().split('T')[0];
+    const today = new Date();
+    const todayStr = today.toISOString().split('T')[0];
+    
+    // 判断是否为交易日（动态API判断）
+    const isTodayTradingDay = await isTradingDay(today);
+    if (!isTodayTradingDay) {
+      console.log(`📅 ${todayStr} 不是交易日，跳过数据采集`);
+      console.log('（周末或节假日不采集数据）');
+      return;
+    }
+    
+    console.log(`📅 今天是交易日: ${todayStr}\n`);
     
     const marketStats = await getStockData();
     
@@ -124,8 +162,7 @@ async function saveData() {
     
     const topics = await getTopicData();
     
-    await supabase.from('topic_rankings').delete().eq('stat_date', today);
-    
+    // 使用 upsert 保留历史数据，而不是删除当天数据
     console.log('保存题材数据...');
     const topicRows = topics.map(t => ({
       stat_date: today,
@@ -134,7 +171,9 @@ async function saveData() {
     
     const { error: topicError } = await supabase
       .from('topic_rankings')
-      .insert(topicRows);
+      .upsert(topicRows, {
+        onConflict: 'stat_date,topic_code'
+      });
     
     if (topicError) {
       console.error('❌ 题材数据保存失败:', topicError);
