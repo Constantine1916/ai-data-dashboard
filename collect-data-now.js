@@ -40,13 +40,31 @@ async function getMarketData() {
     
     const lines = output.trim().split('\n');
     
-    const totalAmount = Math.round(parseFloat(lines[1]) || 0);
-    const totalVolume = Math.round(parseFloat(lines[2]) || 0);
+    // 解析输出
+    let totalAmount = 0;
+    let totalVolume = 0;
+    let limitUp = 0;
+    let limitDown = 0;
+    
+    for (const line of lines) {
+      if (line.startsWith('TOTAL_AMOUNT:')) {
+        totalAmount = parseFloat(line.split(':')[1]) || 0;
+      }
+      if (line.startsWith('TOTAL_VOLUME:')) {
+        totalVolume = parseFloat(line.split(':')[1]) || 0;
+      }
+      if (line.startsWith('LIMIT_UP:')) {
+        limitUp = parseInt(line.split(':')[1]) || 0;
+      }
+      if (line.startsWith('LIMIT_DOWN:')) {
+        limitDown = parseInt(line.split(':')[1]) || 0;
+      }
+    }
     
     return {
-      limitUpCount: 0,  // 暂时无法获取
-      limitDownCount: 0, // 暂时无法获取
-      maxContinuousLimit: 0, // 暂时无法获取
+      limitUpCount: limitUp,
+      limitDownCount: limitDown,
+      maxContinuousLimit: 0,
       totalVolume: totalVolume,
       totalAmount: totalAmount,
     };
