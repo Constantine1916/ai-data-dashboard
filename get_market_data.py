@@ -51,6 +51,12 @@ try:
     except Exception as e:
         print(f'跌停池获取失败: {e}', file=sys.stderr)
     
+    # ============ 题材涨幅数据 ============
+    # 注意：从海外访问会超时，暂时跳过
+    # 如需启用，需要国内网络或代理
+    topics = []
+    print(f'题材板块: 跳过（海外IP无法访问）', file=sys.stderr)
+    
     # ============ 输出结果 ============
     print('SUCCESS')
     print(f'TOTAL_AMOUNT:{int(total_amount)}')
@@ -58,6 +64,13 @@ try:
     print(f'LIMIT_UP:{limit_up}')
     print(f'LIMIT_DOWN:{limit_down}')
     print(f'MAX_CONTINUOUS_LIMIT:{max_continuous_limit}')
+    
+    # 输出题材数据（空）
+    if topics:
+        print('TOPICS_START')
+        for t in topics:
+            print(f"{t['code']}|{t['name']}|{t['changePercent']}|{t['closePrice'] or ''}")
+        print('TOPICS_END')
     
 except Exception as e:
     print(f'ERROR: {e}', file=sys.stderr)
