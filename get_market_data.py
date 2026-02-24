@@ -1,16 +1,25 @@
 #!/usr/bin/env python3
 import akshare as ak
+from datetime import datetime, timedelta
 import sys
+
+def get_date_str(days_ago=0):
+    """获取日期字符串，格式为 YYYYMMDD"""
+    d = datetime.now() - timedelta(days=days_ago)
+    return d.strftime('%Y%m%d')
 
 try:
     # ============ 成交额数据 ============
     # 上海每日概况
-    sse = ak.stock_sse_deal_daily(date='20260224')
+    date_str = get_date_str()
+    print(f'获取日期: {date_str}', file=sys.stderr)
+    
+    sse = ak.stock_sse_deal_daily(date=date_str)
     sh_amount = float(sse.loc[sse['单日情况'] == '成交金额', '股票'].values[0]) * 100000000
     sh_volume = float(sse.loc[sse['单日情况'] == '成交量', '股票'].values[0]) * 100000000
 
     # 深圳成交数据
-    szse = ak.stock_szse_summary(date='20260224')
+    szse = ak.stock_szse_summary(date=date_str)
     sz_stock = szse[szse['证券类别'] == '股票']
     sz_amount = float(sz_stock['成交金额'].values[0])
 
@@ -18,26 +27,25 @@ try:
     total_amount = sh_amount + sz_amount
     
     # ============ 涨跌停数据 ============
-    # 尝试获取涨停池
+    # 用昨天的日期（因为当天收盘后才会统计）
+    yesterday = get_date_str(1)
+    
     limit_up = 0
     limit_down = 0
     
     try:
-        # 昨日涨停
-        zt_prev = ak.stock_zt_pool_previous_em()
-        if len(zt_prev) > 0:
-            limit_up = len(zt_prev)
-            print(f'昨日涨停: {limit_up} 只', file=sys.stderr)
+        # 涨停池
+        zt = ak.stock_zt_pool_em(date=yesterday)
+        limit_up = len(zt)
+        print(f'涨停池 {yesterday}: {limit_up} 条', file=sys.stderr)
     except Exception as e:
         print(f'涨停池获取失败: {e}', file=sys.stderr)
     
     try:
-        # 跌停池 (强势股/跌停)
-        dt_pool = ak.stock_zt_pool_strong_em()
-        # 跌停的判断：跌幅接近 -10%
-        if len(dt_pool) > 0 and '涨跌幅' in dt_pool.columns:
-            limit_down = len(dt_pool[dt_pool['涨跌幅'] <= -9.5])
-            print(f'跌停: {limit_down} 只', file=sys.stderr)
+        # 跌停池
+        dt = ak.stock_zt_pool_dtgc_em(date=yesterday)
+        limit_down = len(dt)
+        print(f'跌停池 {yesterday}: {limit_down} 条', file=sys.stderr)
     except Exception as e:
         print(f'跌停池获取失败: {e}', file=sys.stderr)
     
@@ -50,4 +58,6 @@ try:
     
 except Exception as e:
     print(f'ERROR: {e}', file=sys.stderr)
+    import traceback
+    traceback.print_exc()
     sys.exit(1)
