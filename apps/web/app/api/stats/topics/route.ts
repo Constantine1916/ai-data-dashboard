@@ -26,20 +26,39 @@ interface TopicRow {
 }
 
 /**
+ * GET /api/stats/topics
  * GET /api/stats/topics?date=2026-02-12
- * 获取指定日期的题材排行TOP10
+ * 获取所有有数据的日期列表，或指定日期的题材排行TOP10
  */
+
+/**
+ * 获取所有有数据的日期列表
+ */
+async function getAvailableDates() {
+  const { data, error } = await supabase
+    .from('topic_rankings')
+    .select('stat_date')
+    .order('stat_date', { ascending: false })
+  
+  if (error) {
+    console.error('[API] 查询可用日期失败:', error)
+    return []
+  }
+  
+  // 去重
+  const dates = [...new Set(data?.map(d => d.stat_date) || [])]
+  return dates
+}
 export const GET = createRouteHandler({
   GET: async (request) => {
     try {
       const { searchParams } = new URL(request.url)
       const date = searchParams.get('date')
 
+      // 如果没有提供日期，返回所有有数据的日期列表
       if (!date) {
-        return NextResponse.json(
-          createErrorResponse('VALIDATION_ERROR', '缺少 date 参数'),
-          { status: 400 }
-        )
+        const dates = await getAvailableDates()
+        return NextResponse.json(createSuccessResponse({ dates }))
       }
 
       // 验证日期格式
