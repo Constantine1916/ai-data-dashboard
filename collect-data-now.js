@@ -1,3 +1,8 @@
+/**
+ * A股数据采集脚本
+ * 使用 Akshare 接口获取市场数据
+ */
+
 const { createClient } = require('@supabase/supabase-js');
 
 const supabase = createClient(
@@ -8,110 +13,47 @@ const supabase = createClient(
 // 动态判断是否为交易日
 async function isTradingDay(date) {
   const d = date instanceof Date ? date : new Date(date);
-  
-  // 使用本地时区（服务器时区）获取星期几
   const day = d.getDay();
-  
-  // 简单判断：周六(6)、周日(0)不是交易日
-  // 注：需要排除法定节假日，实际使用时建议调用 akshare 获取完整交易日历
   if (day === 0 || day === 6) {
-    console.log(`📅 今天是周末（${['周日','周一','周二','周三','周四','周五','周六'][day]}），不是交易日`);
+    console.log(`📅 今天是周末，不是交易日`);
     return false;
   }
-  
-  console.log(`📅 今天是工作日（${['周日','周一','周二','周三','周四','周五','周六'][day]}），是交易日`);
+  console.log(`📅 今天是工作日，是交易日`);
   return true;
 }
 
-async function getStockData() {
-  console.log('正在从东方财富API获取数据...\n');
+/**
+ * 使用 Python/Akshare 获取市场数据
+ */
+async function getMarketData() {
+  console.log('正在通过 Akshare 获取市场数据...\n');
   
-  const baseUrl = 'https://push2.eastmoney.com/api/qt/clist/get';
+  const { execSync } = require('child_process');
   
-  const params = new URLSearchParams({
-    pn: '1',
-    pz: '5000',
-    po: '1',
-    np: '1',
-    ut: 'bd1d9ddb04089700cf9c27f6f7426281',
-    fltt: '2',
-    invt: '2',
-    fid: 'f3',
-    fs: 'm:0+t:6,m:0+t:80,m:1+t:2,m:1+t:23',
-    fields: 'f12,f14,f2,f3,f5,f6,f62',
-  });
-
-  const response = await fetch(`${baseUrl}?${params}`);
-  const data = await response.json();
-  
-  if (!data.data || !data.data.diff) {
-    throw new Error('API返回数据异常');
+  try {
+    const output = execSync('python3 /root/clawd/ai-data-dashboard/get_market_data.py', {
+      encoding: 'utf-8',
+      timeout: 60000
+    });
+    
+    console.log('Python 输出:', output);
+    
+    const lines = output.trim().split('\n');
+    
+    const totalAmount = Math.round(parseFloat(lines[1]) || 0);
+    const totalVolume = Math.round(parseFloat(lines[2]) || 0);
+    
+    return {
+      limitUpCount: 0,  // 暂时无法获取
+      limitDownCount: 0, // 暂时无法获取
+      maxContinuousLimit: 0, // 暂时无法获取
+      totalVolume: totalVolume,
+      totalAmount: totalAmount,
+    };
+  } catch (error) {
+    console.error('❌ 获取数据失败:', error.message);
+    throw error;
   }
-  
-  const stocks = data.data.diff;
-  
-  // 统计
-  const limitUp = stocks.filter(s => s.f3 >= 9.9 && !s.f14.includes('ST') && !s.f14.includes('*') && !s.f14.startsWith('N'));
-  const limitDown = stocks.filter(s => s.f3 <= -9.9 && !s.f14.includes('ST') && !s.f14.includes('*') && !s.f14.startsWith('N'));
-  
-  // 过滤异常的连板数据（只取合理范围 0-50）
-  const validLimits = stocks
-    .map(s => s.f62 || 0)
-    .filter(v => v >= 0 && v <= 50);
-  const maxLimit = validLimits.length > 0 ? Math.max(...validLimits) : 0;
-  
-  const totalVolume = stocks.reduce((sum, s) => sum + (s.f5 || 0), 0);
-  const totalAmount = stocks.reduce((sum, s) => sum + (s.f6 || 0), 0);
-  
-  console.log('📊 市场数据:');
-  console.log(`  涨停: ${limitUp.length} 家`);
-  console.log(`  跌停: ${limitDown.length} 家`);
-  console.log(`  最高连板: ${maxLimit} 连`);
-  console.log(`  总成交量: ${totalVolume} 手`);
-  console.log(`  总成交额: ${(totalAmount / 100000000).toFixed(2)} 亿\n`);
-  
-  return {
-    limitUpCount: limitUp.length,
-    limitDownCount: limitDown.length,
-    maxContinuousLimit: maxLimit,
-    totalVolume: totalVolume,
-    totalAmount: totalAmount,
-  };
-}
-
-async function getTopicData() {
-  console.log('正在获取题材数据...\n');
-  
-  const baseUrl = 'https://push2.eastmoney.com/api/qt/clist/get';
-  const params = new URLSearchParams({
-    pn: '1',
-    pz: '50',
-    po: '1',
-    np: '1',
-    ut: 'bd1d9ddb04089700cf9c27f6f7426281',
-    fltt: '2',
-    invt: '2',
-    fid: 'f3',
-    fs: 'm:90+t:3',
-    fields: 'f12,f14,f2,f3',
-  });
-
-  const response = await fetch(`${baseUrl}?${params}`);
-  const data = await response.json();
-  
-  if (!data.data || !data.data.diff) {
-    throw new Error('API返回数据异常');
-  }
-  
-  console.log(`📈 获取到 ${data.data.diff.length} 个题材\n`);
-  
-  return data.data.diff.map((t, i) => ({
-    topic_code: t.f12,
-    topic_name: t.f14,
-    change_percent: t.f3,
-    close_price: t.f2,
-    rank: i + 1,
-  }));
 }
 
 async function saveData() {
@@ -119,18 +61,22 @@ async function saveData() {
     const today = new Date();
     const todayStr = today.toISOString().split('T')[0];
     
-    // 判断是否为交易日（动态API判断）
+    // 判断是否为交易日
     const isTodayTradingDay = await isTradingDay(today);
     if (!isTodayTradingDay) {
       console.log(`📅 ${todayStr} 不是交易日，跳过数据采集`);
-      console.log('（周末或节假日不采集数据）');
       return;
     }
     
     console.log(`📅 今天是交易日: ${todayStr}\n`);
     
-    const marketStats = await getStockData();
+    const marketStats = await getMarketData();
     
+    console.log('📊 市场数据:');
+    console.log(`  总成交额: ${(marketStats.totalAmount / 100000000).toFixed(2)} 亿`);
+    console.log(`  总成交量: ${(marketStats.totalVolume / 100000000).toFixed(2)} 亿手\n`);
+    
+    // 保存到数据库
     console.log('保存市场统计数据...');
     const { error: statsError } = await supabase
       .from('daily_market_stats')
@@ -151,29 +97,7 @@ async function saveData() {
     }
     console.log('✅ 市场统计已保存\n');
     
-    const topics = await getTopicData();
-    
-    // 使用 upsert 保留历史数据，而不是删除当天数据
-    console.log('保存题材数据...');
-    const topicRows = topics.map(t => ({
-      stat_date: today,
-      ...t
-    }));
-    
-    const { error: topicError } = await supabase
-      .from('topic_rankings')
-      .upsert(topicRows, {
-        onConflict: 'stat_date,topic_code'
-      });
-    
-    if (topicError) {
-      console.error('❌ 题材数据保存失败:', topicError);
-      throw topicError;
-    }
-    console.log('✅ 题材数据已保存\n');
-    
     console.log('🎉 所有数据收集完成！');
-    console.log(`\n现在访问 http://localhost:3000/dashboard 查看看板`);
     
   } catch (error) {
     console.error('❌ 错误:', error.message);
