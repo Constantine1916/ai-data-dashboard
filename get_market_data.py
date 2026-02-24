@@ -30,12 +30,16 @@ try:
     # 脚本在收盘后运行，用今天的日期
     limit_up = 0
     limit_down = 0
+    max_continuous_limit = 0
     
     try:
         # 涨停池
         zt = ak.stock_zt_pool_em(date=date_str)
         limit_up = len(zt)
-        print(f'涨停池 {date_str}: {limit_up} 条', file=sys.stderr)
+        # 获取最高连板数
+        if len(zt) > 0 and '连板数' in zt.columns:
+            max_continuous_limit = int(zt['连板数'].max())
+        print(f'涨停池 {date_str}: {limit_up} 条, 最高连板: {max_continuous_limit}', file=sys.stderr)
     except Exception as e:
         print(f'涨停池获取失败: {e}', file=sys.stderr)
     
@@ -53,6 +57,7 @@ try:
     print(f'TOTAL_VOLUME:{int(sh_volume)}')
     print(f'LIMIT_UP:{limit_up}')
     print(f'LIMIT_DOWN:{limit_down}')
+    print(f'MAX_CONTINUOUS_LIMIT:{max_continuous_limit}')
     
 except Exception as e:
     print(f'ERROR: {e}', file=sys.stderr)

@@ -45,6 +45,7 @@ async function getMarketData() {
     let totalVolume = 0;
     let limitUp = 0;
     let limitDown = 0;
+    let maxContinuousLimit = 0;
     
     for (const line of lines) {
       if (line.startsWith('TOTAL_AMOUNT:')) {
@@ -59,12 +60,15 @@ async function getMarketData() {
       if (line.startsWith('LIMIT_DOWN:')) {
         limitDown = parseInt(line.split(':')[1]) || 0;
       }
+      if (line.startsWith('MAX_CONTINUOUS_LIMIT:')) {
+        maxContinuousLimit = parseInt(line.split(':')[1]) || 0;
+      }
     }
     
     return {
       limitUpCount: limitUp,
       limitDownCount: limitDown,
-      maxContinuousLimit: 0,
+      maxContinuousLimit: maxContinuousLimit,
       totalVolume: totalVolume,
       totalAmount: totalAmount,
     };
