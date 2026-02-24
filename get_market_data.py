@@ -27,25 +27,23 @@ try:
     total_amount = sh_amount + sz_amount
     
     # ============ 涨跌停数据 ============
-    # 用昨天的日期（因为当天收盘后才会统计）
-    yesterday = get_date_str(1)
-    
+    # 脚本在收盘后运行，用今天的日期
     limit_up = 0
     limit_down = 0
     
     try:
         # 涨停池
-        zt = ak.stock_zt_pool_em(date=yesterday)
+        zt = ak.stock_zt_pool_em(date=date_str)
         limit_up = len(zt)
-        print(f'涨停池 {yesterday}: {limit_up} 条', file=sys.stderr)
+        print(f'涨停池 {date_str}: {limit_up} 条', file=sys.stderr)
     except Exception as e:
         print(f'涨停池获取失败: {e}', file=sys.stderr)
     
     try:
         # 跌停池
-        dt = ak.stock_zt_pool_dtgc_em(date=yesterday)
+        dt = ak.stock_zt_pool_dtgc_em(date=date_str)
         limit_down = len(dt)
-        print(f'跌停池 {yesterday}: {limit_down} 条', file=sys.stderr)
+        print(f'跌停池 {date_str}: {limit_down} 条', file=sys.stderr)
     except Exception as e:
         print(f'跌停池获取失败: {e}', file=sys.stderr)
     
