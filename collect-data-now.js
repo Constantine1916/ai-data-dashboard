@@ -46,8 +46,32 @@ async function getMarketData() {
     let limitUp = 0;
     let limitDown = 0;
     let maxContinuousLimit = 0;
+    let topics = [];
+    let inTopics = false;
     
     for (const line of lines) {
+      if (line === 'TOPICS_START') {
+        inTopics = true;
+        continue;
+      }
+      if (line === 'TOPICS_END') {
+        inTopics = false;
+        continue;
+      }
+      
+      if (inTopics) {
+        const parts = line.split('|');
+        if (parts.length >= 3) {
+          topics.push({
+            code: parts[0],
+            name: parts[1],
+            changePercent: parseFloat(parts[2]) || 0,
+            closePrice: parts[3] ? parseFloat(parts[3]) : null
+          });
+        }
+        continue;
+      }
+      
       if (line.startsWith('TOTAL_AMOUNT:')) {
         totalAmount = parseFloat(line.split(':')[1]) || 0;
       }
@@ -71,6 +95,7 @@ async function getMarketData() {
       maxContinuousLimit: maxContinuousLimit,
       totalVolume: totalVolume,
       totalAmount: totalAmount,
+      topics: topics
     };
   } catch (error) {
     console.error('❌ 获取数据失败:', error.message);
@@ -118,6 +143,32 @@ async function saveData() {
       throw statsError;
     }
     console.log('✅ 市场统计已保存\n');
+    
+    // 保存题材数据
+    if (marketStats.topics && marketStats.topics.length > 0) {
+      console.log('📈 保存题材数据...');
+      
+      // 先删除当天旧数据
+      await supabase.from('topic_rankings').delete().eq('stat_date', todayStr);
+      
+      // 批量插入新数据
+      const topicRows = marketStats.topics.map((t, i) => ({
+        stat_date: todayStr,
+        topic_code: t.code,
+        topic_name: t.name,
+        change_percent: t.changePercent,
+        close_price: t.closePrice,
+        rank: i + 1
+      }));
+      
+      const { error: topicError } = await supabase.from('topic_rankings').insert(topicRows);
+      
+      if (topicError) {
+        console.error('❌ 题材数据保存失败:', topicError);
+      } else {
+        console.log(`✅ 题材数据已保存 (${marketStats.topics.length} 条)\n`);
+      }
+    }
     
     console.log('🎉 所有数据收集完成！');
     
