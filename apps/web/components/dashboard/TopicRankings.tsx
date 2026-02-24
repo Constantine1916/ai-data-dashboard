@@ -8,28 +8,34 @@ export function TopicRankings() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [selectedDate, setSelectedDate] = useState<string>('')
+  const [availableDates, setAvailableDates] = useState<string[]>([])
   const isInitialLoad = useRef(true)
 
-  // 初始化：获取最近交易日
+  // 初始化：获取可用日期列表
   useEffect(() => {
     const init = async () => {
       try {
         setLoading(true)
         
-        // 从 today API 获取最近交易日
-        const res = await fetch('/api/stats/today')
+        // 从 API 获取所有有数据的日期
+        const res = await fetch('/api/stats/topics')
         const data = await res.json()
         
-        let dateToFetch
-        if (data.success && data.data?.tradingDate) {
-          dateToFetch = data.data.tradingDate
-        } else {
+        let dates: string[] = []
+        if (data.success && data.data?.dates) {
+          dates = data.data.dates
+          setAvailableDates(dates)
+        }
+        
+        // 默认选择最新日期
+        let dateToFetch = dates[0] || ''
+        if (!dateToFetch) {
           const today = new Date()
           dateToFetch = today.toISOString().split('T')[0]
         }
         
         setSelectedDate(dateToFetch)
-        await fetchTopics(dateToFetch, true) // 初始加载视为手动选择
+        await fetchTopics(dateToFetch, true)
         isInitialLoad.current = false
       } catch (err) {
         setLoading(false)
@@ -107,24 +113,6 @@ export function TopicRankings() {
     fetchTopics(date, true) // 手动选择
   }
 
-  // 生成可选日期（最近30天，跳过周末）
-  const getAvailableDates = () => {
-    const dates: string[] = []
-    const today = new Date()
-    
-    for (let i = 0; i < 30; i++) {
-      const date = new Date(today)
-      date.setDate(date.getDate() - i)
-      if (date.getDay() === 0 || date.getDay() === 6) continue
-      
-      const yyyy = date.getFullYear()
-      const mm = String(date.getMonth() + 1).padStart(2, '0')
-      const dd = String(date.getDate()).padStart(2, '0')
-      dates.push(`${yyyy}-${mm}-${dd}`)
-    }
-    return dates
-  }
-
   const formatDateDisplay = (dateStr: string) => {
     const date = new Date(dateStr)
     const weekDays = ['周日', '周一', '周二', '周三', '周四', '周五', '周六']
@@ -154,7 +142,7 @@ export function TopicRankings() {
           onChange={(e) => handleDateChange(e.target.value)}
           className="text-sm border border-gray-200 rounded-lg px-3 py-1.5 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
         >
-          {getAvailableDates().map((date) => (
+          {availableDates.map((date) => (
             <option key={date} value={date}>
               {formatDateDisplay(date)}
             </option>
