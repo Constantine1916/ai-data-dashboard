@@ -1,13 +1,14 @@
 /**
  * A股交易日判断工具
+ * 简化版：只判断周末，节假日需要手动排除或后续接入完整交易日历
  */
 
 import { supabase } from '@/lib/db/supabase'
 
 /**
  * 判断是否为A股交易日期
- * 1. 先判断是否为周末
- * 2. 再尝试调用东方财富API确认
+ * 只判断周末（周六周日不是交易日）
+ * 工作日默认是交易日
  */
 export async function isTradingDay(date?: string): Promise<boolean> {
   // 获取目标日期（使用北京时间）
@@ -15,48 +16,15 @@ export async function isTradingDay(date?: string): Promise<boolean> {
   const beijingTime = new Date(now.getTime() + 8 * 60 * 60 * 1000)
   const targetDate = date || beijingTime.toISOString().split('T')[0]
   
-  // 先简单判断是否为周末
+  // 判断是否为周末
   const day = beijingTime.getDay()
   if (day === 0 || day === 6) {
     console.log(`[交易日判断] ${targetDate} 是周末，不是交易日`)
     return false
   }
   
-  console.log(`[交易日判断] ${targetDate} 是工作日，检查是否为交易日...`)
-  
-  try {
-    // 使用东方财富的大盘行情API
-    const url = `https://push2.eastmoney.com/api/qt/stock/get?secid=1.000001&fields=f2,f3,f6`
-    
-    const res = await fetch(url)
-    const data = await res.json()
-    
-    // 如果 data 是空对象 {} 或 diff 不存在，说明是非交易日
-    const marketData = data?.data
-    const hasData = marketData && Object.keys(marketData).length > 0
-    
-    if (!hasData) {
-      console.log(`[交易日判断] 东方财富API无数据，可能是节假日`)
-      return false
-    }
-    
-    // 检查是否有有效数据（f2 是最新价）
-    const price = marketData?.f2
-    // 如果价格是 '-' 或不存在，说明非交易时段/非交易日
-    if (price === '-' || price === undefined || price === null) {
-      console.log(`[交易日判断] 大盘价格为空，可能是收盘后或节假日`)
-      return false
-    }
-    
-    console.log(`[交易日判断] 今天是交易日！大盘价格: ${price}`)
-    return true
-  } catch (error) {
-    console.error('[交易日判断] 判断交易日失败:', error)
-    // 出错时假设是交易日（让数据收集继续）
-    // 实际采集时如果没数据会失败，不影响判断
-    console.log(`[交易日判断] API调用失败，默认为交易日`)
-    return true
-  }
+  console.log(`[交易日判断] ${targetDate} 是工作日，默认是交易日`)
+  return true
 }
 
 /**
