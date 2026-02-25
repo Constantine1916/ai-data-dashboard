@@ -18,6 +18,9 @@ export function createRouteHandler(
     PUT?: RouteHandler
     DELETE?: RouteHandler
     PATCH?: RouteHandler
+  },
+  options?: {
+    noCache?: boolean  // 是否禁用缓存
   }
 ) {
   return async (
@@ -42,7 +45,16 @@ export function createRouteHandler(
       }
 
       // 执行处理器
-      return await handler(request, context)
+      const response = await handler(request, context)
+      
+      // 如果需要禁用缓存
+      if (options?.noCache) {
+        response.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate')
+        response.headers.set('Pragma', 'no-cache')
+        response.headers.set('Expires', '0')
+      }
+      
+      return response
     } catch (error) {
       return handleApiError(error)
     }
