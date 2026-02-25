@@ -32,7 +32,13 @@ export const GET = createRouteHandler({
         )
       }
 
-      return NextResponse.json(createSuccessResponse(stats))
+      return NextResponse.json(createSuccessResponse(stats), {
+        headers: {
+          'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+          'Pragma': 'no-cache',
+          'Expires': '0',
+        },
+      })
     } catch (error: any) {
       console.error('[API] 获取今日统计数据失败:', error)
       return NextResponse.json(
