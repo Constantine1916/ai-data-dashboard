@@ -1,6 +1,7 @@
 /**
  * A股数据采集脚本
  * 使用 Akshare 接口获取市场数据
+ * 支持失败重试和17:00补采
  */
 
 const { createClient } = require('@supabase/supabase-js');
@@ -10,7 +11,51 @@ const supabase = createClient(
   'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVrYmpqa2N1cXFza3JhdWJvZ3psIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2OTM0NzMzNywiZXhwIjoyMDg0OTIzMzM3fQ.fgCOW2kyJHIQe2ombEW_GMoEWRukO_yix2-7zIktDQA'
 );
 
-// 动态判断是否为交易日
+// 最大重试次数
+const MAX_RETRIES = 3;
+// 重试间隔（毫秒）
+const RETRY_DELAY = 30000;
+// 17:00 北京时间补采时间
+const SUPPLEMENTARY_HOUR = 17;
+const SUPPLEMENTARY_MINUTE = 0;
+
+let isSupplementaryRun = false;
+
+/**
+ * 等待指定时间
+ */
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+/**
+ * 获取当前北京时间
+ */
+function getBeijingTime() {
+  const now = new Date();
+  // 北京时间 = UTC + 8
+  const beijingOffset = 8 * 60 * 60 * 1000;
+  return new Date(now.getTime() + beijingOffset);
+}
+
+/**
+ * 是否应该运行补采（17:00）
+ */
+function shouldRunSupplementary() {
+  const bt = getBeijingTime();
+  return bt.getHours() === SUPPLEMENTARY_HOUR && bt.getMinutes() < 30;
+}
+
+/**
+ * 是否可以重试
+ */
+function canRetry(retryCount) {
+  return retryCount < MAX_RETRIES;
+}
+
+/**
+ * 动态判断是否为交易日
+ */
 async function isTradingDay(date) {
   const d = date instanceof Date ? date : new Date(date);
   const day = d.getDay();
@@ -33,7 +78,7 @@ async function getMarketData() {
   try {
     const output = execSync('python3 /root/clawd/ai-data-dashboard/get_market_data.py', {
       encoding: 'utf-8',
-      timeout: 120000  // 2分钟超时（概念板块API较慢）
+      timeout: 120000  // 2分钟超时
     });
     
     console.log('Python 输出:', output);
@@ -48,6 +93,7 @@ async function getMarketData() {
     let maxContinuousLimit = 0;
     let topics = [];
     let inTopics = false;
+    let dataValid = false;
     
     for (const line of lines) {
       if (line === 'TOPICS_START') {
@@ -89,13 +135,21 @@ async function getMarketData() {
       }
     }
     
+    // 检查数据是否有效（成交额和成交量不为0）
+    dataValid = totalAmount > 0 && totalVolume > 0;
+    
+    if (!dataValid) {
+      console.log('⚠️ 数据无效：成交额或成交量为0');
+    }
+    
     return {
       limitUpCount: limitUp,
       limitDownCount: limitDown,
       maxContinuousLimit: maxContinuousLimit,
       totalVolume: totalVolume,
       totalAmount: totalAmount,
-      topics: topics
+      topics: topics,
+      dataValid: dataValid
     };
   } catch (error) {
     console.error('❌ 获取数据失败:', error.message);
@@ -103,25 +157,31 @@ async function getMarketData() {
   }
 }
 
-async function saveData() {
+/**
+ * 发送 Telegram 通知
+ */
+async function sendTelegramNotification(message) {
+  try {
+    // 这里可以添加 Telegram 发送逻辑
+    console.log('📱 发送通知:', message);
+  } catch (e) {
+    console.error('❌ 通知发送失败:', e.message);
+  }
+}
+
+/**
+ * 保存数据到数据库
+ */
+async function saveData(marketStats) {
   try {
     const today = new Date();
     const todayStr = today.toISOString().split('T')[0];
     
-    // 判断是否为交易日
-    const isTodayTradingDay = await isTradingDay(today);
-    if (!isTodayTradingDay) {
-      console.log(`📅 ${todayStr} 不是交易日，跳过数据采集`);
-      return;
-    }
-    
-    console.log(`📅 今天是交易日: ${todayStr}\n`);
-    
-    const marketStats = await getMarketData();
-    
     console.log('📊 市场数据:');
     console.log(`  总成交额: ${(marketStats.totalAmount / 100000000).toFixed(2)} 亿`);
     console.log(`  总成交量: ${(marketStats.totalVolume / 100000000).toFixed(2)} 亿手\n`);
+    console.log(`  涨停: ${marketStats.limitUpCount} 条`);
+    console.log(`  跌停: ${marketStats.limitDownCount} 条\n`);
     
     // 保存到数据库
     console.log('保存市场统计数据...');
@@ -171,11 +231,125 @@ async function saveData() {
     }
     
     console.log('🎉 所有数据收集完成！');
+    return true;
     
   } catch (error) {
     console.error('❌ 错误:', error.message);
+    throw error;
+  }
+}
+
+/**
+ * 执行数据采集主流程
+ */
+async function runCollection(isRetry = false, isSupplementary = false) {
+  const prefix = isRetry ? '🔄 重试' : (isSupplementary ? '⏰ 补采' : '📊 首次');
+  console.log(`\n${prefix}采集开始 | ${new Date().toISOString()}\n`);
+  
+  const today = new Date();
+  const todayStr = today.toISOString().split('T')[0];
+  
+  // 判断是否为交易日
+  const isTodayTradingDay = await isTradingDay(today);
+  if (!isTodayTradingDay) {
+    console.log(`📅 ${todayStr} 不是交易日，跳过数据采集`);
+    return null;
+  }
+  
+  console.log(`📅 今天是交易日: ${todayStr}\n`);
+  
+  try {
+    const marketStats = await getMarketData();
+    
+    // 检查数据是否有效
+    if (!marketStats.dataValid) {
+      console.log('⚠️ 数据无效，需要重试');
+      return null;
+    }
+    
+    // 数据有效，保存
+    await saveData(marketStats);
+    return marketStats;
+    
+  } catch (error) {
+    console.error('❌ 采集失败:', error.message);
+    return null;
+  }
+}
+
+/**
+ * 主函数
+ */
+async function main() {
+  const args = process.argv.slice(2);
+  isSupplementaryRun = args.includes('--supplementary');
+  
+  console.log('='.repeat(50));
+  console.log('A股数据采集脚本启动');
+  console.log(`时间: ${new Date().toISOString()}`);
+  console.log(`模式: ${isSupplementaryRun ? '补采(17:00)' : '常规'}`);
+  console.log('='.repeat(50));
+  
+  let result = null;
+  let retryCount = 0;
+  
+  // 首次尝试 + 重试
+  while (canRetry(retryCount) && !result) {
+    if (retryCount > 0) {
+      console.log(`\n⏳ 等待 ${RETRY_DELAY/1000} 秒后重试...`);
+      await sleep(RETRY_DELAY);
+    }
+    
+    result = await runCollection(retryCount > 0, isSupplementaryRun);
+    retryCount++;
+    
+    if (result) {
+      console.log(`\n✅ 采集成功！（尝试 ${retryCount} 次）`);
+    } else if (canRetry(retryCount)) {
+      console.log(`\n❌ 采集失败，准备重试...（${retryCount}/${MAX_RETRIES}）`);
+    }
+  }
+  
+  // 如果17:00补采模式且首次没成功，继续尝试
+  if (!result && isSupplementaryRun) {
+    console.log('\n⚠️ 补采模式：17:00 采集失败');
+    process.exit(1);
+  }
+  
+  // 如果常规模式在15:30失败，检查是否需要17:00补采
+  if (!result) {
+    const bt = getBeijingTime();
+    const hour = bt.getHours();
+    
+    console.log('\n' + '='.repeat(50));
+    console.log('⚠️ 15:30 采集失败');
+    console.log(`当前北京时间: ${bt.toISOString()}`);
+    
+    // 如果还没到17:00，提示稍后重试
+    if (hour < SUPPLEMENTARY_HOUR) {
+      console.log(`📌 将在北京时间 ${SUPPLEMENTARY_HOUR}:${SUPPLEMENTARY_MINUTE.toString().padStart(2, '0')} 自动补采`);
+      console.log('或手动运行: node collect-data-now.js --supplementary');
+    } else if (hour >= SUPPLEMENTARY_HOUR && hour < 18) {
+      // 已经是17:00-18:00，执行补采
+      console.log('⏰ 进入17:00补采模式...');
+      result = await runCollection(false, true);
+      
+      if (!result) {
+        // 补采也失败，再试一次
+        console.log('⏳ 补采失败，30秒后再次尝试...');
+        await sleep(30000);
+        result = await runCollection(true, true);
+      }
+    }
+  }
+  
+  if (result) {
+    console.log('\n✅ 数据采集完成');
+    process.exit(0);
+  } else {
+    console.log('\n❌ 数据采集最终失败');
     process.exit(1);
   }
 }
 
-saveData();
+main();
