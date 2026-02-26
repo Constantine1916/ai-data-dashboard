@@ -46,5 +46,5 @@ export const GET = createRouteHandler({
         { status: 500 }
       )
     }
-  }, noCache: true,
+  },
 })

@@ -27,13 +27,7 @@ export const GET = createRouteHandler({
         amount: index.price > 0 ? 0 : 0, // 腾讯API不提供指数成交额
       }))
 
-      return NextResponse.json(createSuccessResponse(result), {
-        headers: {
-          'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
-          'Pragma': 'no-cache',
-          'Expires': '0',
-        },
-      })
+      return NextResponse.json(createSuccessResponse(result))
     } catch (error: any) {
       console.error('[API] 获取指数数据失败:', error)
       return NextResponse.json(
@@ -42,4 +36,4 @@ export const GET = createRouteHandler({
       )
     }
   },
-}, { noCache: true })
+})
