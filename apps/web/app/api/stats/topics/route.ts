@@ -3,6 +3,10 @@ import { createRouteHandler } from '@/lib/api/route-handler'
 import { createSuccessResponse, createErrorResponse } from '@/lib/shared'
 import { createClient } from '@supabase/supabase-js'
 
+// 强制动态渲染，禁止任何缓存
+export const dynamic = 'force-dynamic'
+export const revalidate = 0
+
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
