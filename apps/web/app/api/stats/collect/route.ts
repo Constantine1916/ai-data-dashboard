@@ -12,13 +12,23 @@ const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ?? ''
  * 先判断是否为交易日期，非交易日不采集
  */
 export const POST = createRouteHandler({
-  POST: async () => {
+  POST: async (request) => {
     try {
+      const { searchParams } = new URL(request.url)
+      const days = parseInt(searchParams.get('days') || '1', 10)
+
+      if (!Number.isFinite(days) || days < 1 || days > 30) {
+        return NextResponse.json(
+          createErrorResponse('VALIDATION_ERROR', 'days 参数必须在 1-30 之间'),
+          { status: 400 }
+        )
+      }
+
       // 先判断是否为交易日期
       const today = new Date(new Date().getTime() + 8 * 60 * 60 * 1000).toISOString().split('T')[0]
       const trading = await isTradingDay(today)
       
-      if (!trading) {
+      if (!trading && days === 1) {
         return NextResponse.json(
           createSuccessResponse({
             skipped: true,
@@ -29,7 +39,7 @@ export const POST = createRouteHandler({
       }
 
       const response = await fetch(
-        `${SUPABASE_URL}/functions/v1/collect-stock-stats`,
+        `${SUPABASE_URL}/functions/v1/collect-stock-stats?days=${days}`,
         {
           method: 'POST',
           headers: {

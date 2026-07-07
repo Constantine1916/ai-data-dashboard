@@ -56,6 +56,10 @@ interface MarketTotals {
   totalAmount: number
 }
 
+interface HistoricalMarketTotals extends MarketTotals {
+  date: string
+}
+
 function sleep(ms: number) {
   return new Promise(resolve => setTimeout(resolve, ms))
 }
@@ -134,6 +138,119 @@ async function fetchTencentMarketTotals(): Promise<MarketTotals> {
   }
 
   return parseTencentMarketTotals(await res.text())
+}
+
+function parseHistoricalMarketTotals(payloads: any[]): HistoricalMarketTotals[] {
+  const totalsByDate = new Map<string, HistoricalMarketTotals>()
+  const sourcesByDate = new Map<string, Set<number>>()
+
+  payloads.forEach((payload, sourceIndex) => {
+    for (const line of payload?.data?.klines || []) {
+      const fields = String(line).split(',')
+      if (fields.length < 7) continue
+
+      const date = fields[0]
+      const volume = Number(fields[5] || 0)
+      const amount = Number(fields[6] || 0)
+      const current = totalsByDate.get(date) || { date, totalVolume: 0, totalAmount: 0 }
+      current.totalVolume += volume
+      current.totalAmount += amount
+      totalsByDate.set(date, current)
+
+      const sources = sourcesByDate.get(date) || new Set<number>()
+      sources.add(sourceIndex)
+      sourcesByDate.set(date, sources)
+    }
+  })
+
+  const rows = Array.from(totalsByDate.values()).sort((a, b) => a.date.localeCompare(b.date))
+  if (rows.length === 0) {
+    throw new Error('历史成交额数据为空')
+  }
+
+  for (const row of rows) {
+    if ((sourcesByDate.get(row.date)?.size || 0) !== payloads.length) {
+      throw new Error(`历史成交额数据不完整: ${row.date}`)
+    }
+
+    if (row.totalVolume <= 0 || row.totalAmount <= 0) {
+      throw new Error(`历史成交额数据无效: ${row.date}`)
+    }
+  }
+
+  return rows
+}
+
+function getBeijingDateString(date = new Date()) {
+  return new Date(date.getTime() + 8 * 60 * 60 * 1000).toISOString().split('T')[0]
+}
+
+function formatYmd(date: Date) {
+  return date.toISOString().split('T')[0]
+}
+
+function compactDate(date: string) {
+  return date.replace(/-/g, '')
+}
+
+function getHistoricalStartDate(days: number, endDate: string) {
+  const end = new Date(`${endDate}T00:00:00Z`)
+  const start = new Date(end)
+  start.setUTCDate(start.getUTCDate() - Math.max(days * 2 + 10, 20))
+  return formatYmd(start)
+}
+
+async function fetchStoredHistoricalMarketTotals(days: number, endDate: string): Promise<HistoricalMarketTotals[]> {
+  const startDate = getHistoricalStartDate(days, endDate)
+  const { data, error } = await supabase
+    .from('daily_market_stats')
+    .select('stat_date,total_volume,total_amount,limit_up_count,limit_down_count')
+    .gte('stat_date', startDate)
+    .lte('stat_date', endDate)
+    .order('stat_date', { ascending: true })
+
+  if (error) {
+    throw error
+  }
+
+  return (data || [])
+    .filter(row => Number(row.limit_up_count || 0) > 0 || Number(row.limit_down_count || 0) > 0)
+    .map(row => ({
+      date: row.stat_date,
+      totalVolume: Number(row.total_volume || 0),
+      totalAmount: Number(row.total_amount || 0),
+    }))
+    .filter(row => row.totalVolume > 0 && row.totalAmount > 0)
+    .slice(-days)
+}
+
+async function fetchHistoricalMarketTotals(days: number, endDate: string): Promise<HistoricalMarketTotals[]> {
+  const startDate = getHistoricalStartDate(days, endDate)
+
+  const params = new URLSearchParams({
+    fields1: 'f1,f2,f3,f4,f5,f6',
+    fields2: 'f51,f52,f53,f54,f55,f56,f57',
+    klt: '101',
+    fqt: '0',
+    beg: compactDate(startDate),
+    end: compactDate(endDate),
+  })
+
+  try {
+    const [shRes, szRes] = await Promise.all([
+      fetchJsonWithRetry(`https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=1.000001&${params}`, '上证历史成交'),
+      fetchJsonWithRetry(`https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=0.399001&${params}`, '深证历史成交'),
+    ])
+
+    return parseHistoricalMarketTotals([shRes, szRes]).slice(-days)
+  } catch (e) {
+    console.log(`东方财富历史成交额失败，尝试使用已入库历史成交额: ${e}`)
+    const storedTotals = await fetchStoredHistoricalMarketTotals(days, endDate)
+    if (storedTotals.length >= Math.min(days, 2)) {
+      return storedTotals
+    }
+    throw e
+  }
 }
 
 // 获取涨停股票
@@ -383,13 +500,20 @@ serve(async (req: Request) => {
   
   try {
     const url = new URL(req.url)
-    const days = parseInt(url.searchParams.get('days') || '1')
-    const today = new Date().toISOString().split('T')[0]
+    const days = parseInt(url.searchParams.get('days') || '1', 10)
+    if (!Number.isFinite(days) || days < 1 || days > 30) {
+      return new Response(JSON.stringify({
+        success: false,
+        error: { code: 'VALIDATION_ERROR', message: 'days 参数必须在 1-30 之间' }
+      }), { status: 400, headers })
+    }
+
+    const today = getBeijingDateString()
     const todayFormatted = today.replace(/-/g, '')
     
     // 检查今天是否为交易日
     const todayIsTrading = await isTradingDay(today)
-    if (!todayIsTrading) {
+    if (!todayIsTrading && days === 1) {
       console.log(`今日 ${today} 为非交易日，跳过采集`)
       return new Response(JSON.stringify({
         success: true,
@@ -399,61 +523,79 @@ serve(async (req: Request) => {
     }
     
     console.log(`=== 开始采集近${days}日数据 ===`)
-    
-    // 采集今日数据
-    const [limitUp, limitDown, concepts] = await Promise.all([
-      fetchLimitUp(todayFormatted),
-      fetchLimitDown(todayFormatted),
-      fetchConceptRank()
-    ])
-    
-    // 获取市场总成交额和成交量
-    const marketTotals = await fetchMarketTotals()
-    
-    const maxLimit = limitUp.length > 0 
-      ? Math.max(...limitUp.map((s: any) => s.limitDays || 0))
-      : 0
-    
-    // 保存今日数据
-    await saveDailyStats({
-      date: today,
-      limitUpCount: limitUp.length,
-      limitDownCount: limitDown.length,
-      totalVolume: marketTotals.totalVolume,
-      totalAmount: marketTotals.totalAmount,
-      maxContinuousLimit: maxLimit
-    })
-    
-    await saveLimitUpStocks(today, limitUp)
-    await saveLimitDownStocks(today, limitDown)
-    await saveConcepts(today, concepts)
-    
-    console.log(`今日: 涨停${limitUp.length}只, 跌停${limitDown.length}只, 成交额${(marketTotals.totalAmount/1e8).toFixed(0)}亿`)
+
+    let todayResult = null
+    let concepts: ConceptData[] = []
+
+    if (todayIsTrading) {
+      // 采集今日数据
+      const [limitUp, limitDown, conceptRows] = await Promise.all([
+        fetchLimitUp(todayFormatted),
+        fetchLimitDown(todayFormatted),
+        fetchConceptRank()
+      ])
+      concepts = conceptRows
+
+      // 获取市场总成交额和成交量
+      const marketTotals = await fetchMarketTotals()
+
+      const maxLimit = limitUp.length > 0
+        ? Math.max(...limitUp.map((s: any) => s.limitDays || 0))
+        : 0
+
+      // 保存今日数据
+      await saveDailyStats({
+        date: today,
+        limitUpCount: limitUp.length,
+        limitDownCount: limitDown.length,
+        totalVolume: marketTotals.totalVolume,
+        totalAmount: marketTotals.totalAmount,
+        maxContinuousLimit: maxLimit
+      })
+
+      await saveLimitUpStocks(today, limitUp)
+      await saveLimitDownStocks(today, limitDown)
+      await saveConcepts(today, concepts)
+
+      todayResult = {
+        date: today,
+        limitUpCount: limitUp.length,
+        limitDownCount: limitDown.length,
+        totalVolume: marketTotals.totalVolume,
+        totalAmount: marketTotals.totalAmount,
+        maxContinuousLimit: maxLimit,
+        limitUp: limitUp.slice(0, 30),
+        limitDown: limitDown.slice(0, 30)
+      }
+
+      console.log(`今日: 涨停${limitUp.length}只, 跌停${limitDown.length}只, 成交额${(marketTotals.totalAmount/1e8).toFixed(0)}亿`)
+    } else {
+      console.log(`今日 ${today} 为非交易日，继续执行历史回填`)
+    }
     
     // 采集历史数据
     const historyResults = []
-    for (let i = 1; i < days; i++) {
-      const date = new Date()
-      date.setDate(date.getDate() - i)
-      const dateStr = date.toISOString().split('T')[0]
-      const dateFormatted = dateStr.replace(/-/g, '')
-      
-      // 检查是否为交易日
-      const isTrading = await isTradingDay(dateStr)
-      if (!isTrading) {
-        console.log(`跳过 ${dateStr}（非交易日）`)
-        continue
-      }
-      
-      console.log(`采集 ${dateStr}...`)
+    const historicalTotals = days > 1
+      ? (await fetchHistoricalMarketTotals(days, today)).filter(row => row.date !== today).slice(-(days - 1))
+      : []
+
+    for (const historyTotals of historicalTotals) {
+      const dateStr = historyTotals.date
+      const dateFormatted = compactDate(dateStr)
+
+      console.log(`采集历史交易日 ${dateStr}...`)
       
       try {
         const [zt, dt] = await Promise.all([
           fetchLimitUp(dateFormatted),
           fetchLimitDown(dateFormatted)
         ])
+
+        if (zt.length === 0 && dt.length === 0) {
+          console.log(`  ${dateStr}: 历史涨跌停池为空，跳过写入`)
+          continue
+        }
         
-        const historyTotals = await fetchMarketTotals()
         const maxL = zt.length > 0 ? Math.max(...zt.map((s: any) => s.limitDays || 0)) : 0
         
         await saveDailyStats({
@@ -485,16 +627,7 @@ serve(async (req: Request) => {
     return new Response(JSON.stringify({
       success: true,
       data: {
-        today: {
-          date: today,
-          limitUpCount: limitUp.length,
-          limitDownCount: limitDown.length,
-          totalVolume: marketTotals.totalVolume,
-          totalAmount: marketTotals.totalAmount,
-          maxContinuousLimit: maxLimit,
-          limitUp: limitUp.slice(0, 30),
-          limitDown: limitDown.slice(0, 30)
-        },
+        today: todayResult,
         history: historyResults,
         concepts: concepts.slice(0, 20)
       }
