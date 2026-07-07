@@ -56,6 +56,10 @@ interface MarketTotals {
   totalAmount: number
 }
 
+function sleep(ms: number) {
+  return new Promise(resolve => setTimeout(resolve, ms))
+}
+
 async function fetchJson(url: string) {
   const res = await fetch(url, {
     headers: {
@@ -72,6 +76,24 @@ async function fetchJson(url: string) {
   return await res.json()
 }
 
+async function fetchJsonWithRetry(url: string, label: string, maxRetries = 3) {
+  let lastError: unknown
+
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      return await fetchJson(url)
+    } catch (e) {
+      lastError = e
+      console.log(`${label} 第${attempt}次请求失败: ${e}`)
+      if (attempt < maxRetries) {
+        await sleep(attempt * 1000)
+      }
+    }
+  }
+
+  throw lastError
+}
+
 // 获取涨停股票
 async function fetchLimitUp(date: string): Promise<LimitUpStock[]> {
   const params = new URLSearchParams({
@@ -85,7 +107,7 @@ async function fetchLimitUp(date: string): Promise<LimitUpStock[]> {
   const url = `https://push2ex.eastmoney.com/getTopicZTPool?${params}`
   
   try {
-    const data = await fetchJson(url)
+    const data = await fetchJsonWithRetry(url, '涨停池')
     
     if (data.data?.pool) {
       return data.data.pool.map((s: any) => ({
@@ -117,7 +139,7 @@ async function fetchLimitDown(date: string): Promise<LimitDownStock[]> {
   const url = `https://push2ex.eastmoney.com/getTopicDTPool?${params}`
   
   try {
-    const data = await fetchJson(url)
+    const data = await fetchJsonWithRetry(url, '跌停池')
     
     if (data.data?.pool) {
       return data.data.pool.map((s: any) => ({
@@ -138,25 +160,26 @@ async function fetchLimitDown(date: string): Promise<LimitDownStock[]> {
 
 // 获取沪深两市总成交额和成交量
 async function fetchMarketTotals(): Promise<MarketTotals> {
-  try {
-    const fields = 'f43,f47,f48,f57,f58'
-    const [shRes, szRes] = await Promise.all([
-      fetchJson(`https://push2.eastmoney.com/api/qt/stock/get?secid=1.000001&fields=${fields}`),
-      fetchJson(`https://push2.eastmoney.com/api/qt/stock/get?secid=0.399001&fields=${fields}`)
-    ])
-    
-    const shAmount = Number(shRes.data?.f48 || 0)
-    const szAmount = Number(szRes.data?.f48 || 0)
-    const shVolume = Number(shRes.data?.f47 || 0)
-    const szVolume = Number(szRes.data?.f47 || 0)
-    
-    return {
-      totalVolume: shVolume + szVolume,
-      totalAmount: shAmount + szAmount,
-    }
-  } catch (e) {
-    console.log(`成交额API错误: ${e}`)
-    return { totalVolume: 0, totalAmount: 0 }
+  const fields = 'f43,f47,f48,f57,f58'
+  const [shRes, szRes] = await Promise.all([
+    fetchJsonWithRetry(`https://push2.eastmoney.com/api/qt/stock/get?secid=1.000001&fields=${fields}`, '上证成交'),
+    fetchJsonWithRetry(`https://push2.eastmoney.com/api/qt/stock/get?secid=0.399001&fields=${fields}`, '深证成交')
+  ])
+  
+  const shAmount = Number(shRes.data?.f48 || 0)
+  const szAmount = Number(szRes.data?.f48 || 0)
+  const shVolume = Number(shRes.data?.f47 || 0)
+  const szVolume = Number(szRes.data?.f47 || 0)
+  const totalVolume = shVolume + szVolume
+  const totalAmount = shAmount + szAmount
+
+  if (totalVolume <= 0 || totalAmount <= 0) {
+    throw new Error(`成交额数据无效: volume=${totalVolume}, amount=${totalAmount}`)
+  }
+
+  return {
+    totalVolume,
+    totalAmount,
   }
 }
 
@@ -276,7 +299,7 @@ async function isTradingDay(dateStr: string): Promise<boolean> {
   const url = `https://push2.eastmoney.com/api/qt/stock/get?secid=1.000001&fields=f43,f57,f58`
   
   try {
-    const data = await fetchJson(url)
+    const data = await fetchJsonWithRetry(url, '交易日判断')
     
     // 如果 data 是空对象，说明是非交易日
     const marketData = data?.data
