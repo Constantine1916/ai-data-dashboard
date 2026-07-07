@@ -94,6 +94,48 @@ async function fetchJsonWithRetry(url: string, label: string, maxRetries = 3) {
   throw lastError
 }
 
+function parseTencentMarketTotals(text: string): MarketTotals {
+  let totalVolume = 0
+  let totalAmount = 0
+
+  for (const row of text.split(';').map(item => item.trim()).filter(Boolean)) {
+    const payload = row.split('=')[1]?.replace(/^"|"$/g, '')
+    if (!payload) continue
+
+    const combined = payload
+      .split('~')
+      .find(part => /^\d+(\.\d+)?\/\d+\/\d+(\.\d+)?$/.test(part))
+
+    if (!combined) continue
+
+    const [, volume, amount] = combined.split('/')
+    totalVolume += Number(volume)
+    totalAmount += Number(amount)
+  }
+
+  if (totalVolume <= 0 || totalAmount <= 0) {
+    throw new Error(`腾讯成交额数据无效: volume=${totalVolume}, amount=${totalAmount}`)
+  }
+
+  return { totalVolume, totalAmount }
+}
+
+async function fetchTencentMarketTotals(): Promise<MarketTotals> {
+  const res = await fetch('https://qt.gtimg.cn/q=sh000001,sz399001', {
+    headers: {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+      'Accept': '*/*',
+      'Referer': 'https://quote.eastmoney.com/',
+    },
+  })
+
+  if (!res.ok) {
+    throw new Error(`腾讯指数接口 HTTP ${res.status}`)
+  }
+
+  return parseTencentMarketTotals(await res.text())
+}
+
 // 获取涨停股票
 async function fetchLimitUp(date: string): Promise<LimitUpStock[]> {
   const params = new URLSearchParams({
@@ -160,26 +202,31 @@ async function fetchLimitDown(date: string): Promise<LimitDownStock[]> {
 
 // 获取沪深两市总成交额和成交量
 async function fetchMarketTotals(): Promise<MarketTotals> {
-  const fields = 'f43,f47,f48,f57,f58'
-  const [shRes, szRes] = await Promise.all([
-    fetchJsonWithRetry(`https://push2.eastmoney.com/api/qt/stock/get?secid=1.000001&fields=${fields}`, '上证成交'),
-    fetchJsonWithRetry(`https://push2.eastmoney.com/api/qt/stock/get?secid=0.399001&fields=${fields}`, '深证成交')
-  ])
-  
-  const shAmount = Number(shRes.data?.f48 || 0)
-  const szAmount = Number(szRes.data?.f48 || 0)
-  const shVolume = Number(shRes.data?.f47 || 0)
-  const szVolume = Number(szRes.data?.f47 || 0)
-  const totalVolume = shVolume + szVolume
-  const totalAmount = shAmount + szAmount
+  try {
+    const fields = 'f43,f47,f48,f57,f58'
+    const [shRes, szRes] = await Promise.all([
+      fetchJsonWithRetry(`https://push2.eastmoney.com/api/qt/stock/get?secid=1.000001&fields=${fields}`, '上证成交'),
+      fetchJsonWithRetry(`https://push2.eastmoney.com/api/qt/stock/get?secid=0.399001&fields=${fields}`, '深证成交')
+    ])
+    
+    const shAmount = Number(shRes.data?.f48 || 0)
+    const szAmount = Number(szRes.data?.f48 || 0)
+    const shVolume = Number(shRes.data?.f47 || 0)
+    const szVolume = Number(szRes.data?.f47 || 0)
+    const totalVolume = shVolume + szVolume
+    const totalAmount = shAmount + szAmount
 
-  if (totalVolume <= 0 || totalAmount <= 0) {
-    throw new Error(`成交额数据无效: volume=${totalVolume}, amount=${totalAmount}`)
-  }
+    if (totalVolume <= 0 || totalAmount <= 0) {
+      throw new Error(`东方财富成交额数据无效: volume=${totalVolume}, amount=${totalAmount}`)
+    }
 
-  return {
-    totalVolume,
-    totalAmount,
+    return {
+      totalVolume,
+      totalAmount,
+    }
+  } catch (e) {
+    console.log(`东方财富成交额失败，切换腾讯指数接口: ${e}`)
+    return await fetchTencentMarketTotals()
   }
 }
 

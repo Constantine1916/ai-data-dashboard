@@ -6,6 +6,7 @@ from urllib.request import Request, urlopen
 EASTMONEY_STOCK_URL = "https://push2.eastmoney.com/api/qt/stock/get"
 EASTMONEY_LIMIT_UP_URL = "https://push2ex.eastmoney.com/getTopicZTPool"
 EASTMONEY_LIMIT_DOWN_URL = "https://push2ex.eastmoney.com/getTopicDTPool"
+TENCENT_INDEX_URL = "https://qt.gtimg.cn/q=sh000001,sz399001"
 
 REQUEST_HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
@@ -18,6 +19,12 @@ def fetch_json(url, timeout=20):
     request = Request(url, headers=REQUEST_HEADERS)
     with urlopen(request, timeout=timeout) as response:
         return json.loads(response.read().decode("utf-8"))
+
+
+def fetch_text(url, timeout=20, encoding="utf-8"):
+    request = Request(url, headers=REQUEST_HEADERS)
+    with urlopen(request, timeout=timeout) as response:
+        return response.read().decode(encoding, errors="replace")
 
 
 def parse_index_totals(payloads):
@@ -41,6 +48,42 @@ def parse_index_totals(payloads):
     }
 
 
+def parse_tencent_index_totals(text):
+    total_volume = 0
+    total_amount = 0.0
+
+    for row in [item.strip() for item in text.split(";") if item.strip()]:
+        if "=" not in row:
+            continue
+        payload = row.split("=", 1)[1].strip().strip('"')
+        parts = payload.split("~")
+        combined = next(
+            (
+                part for part in parts
+                if part.count("/") == 2 and all(segment.replace(".", "", 1).isdigit() for segment in part.split("/"))
+            ),
+            None,
+        )
+        if not combined:
+            continue
+
+        _, volume, amount = combined.split("/")
+        total_volume += int(float(volume))
+        total_amount += float(amount)
+
+    if total_volume <= 0 or total_amount <= 0:
+        raise ValueError("Tencent index payload did not contain positive volume/amount values")
+
+    return {
+        "volume": total_volume,
+        "amount": total_amount,
+    }
+
+
+def fetch_tencent_market_totals():
+    return parse_tencent_index_totals(fetch_text(TENCENT_INDEX_URL, encoding="gbk"))
+
+
 def fetch_market_totals():
     params = {
         "fields": "f43,f47,f48,f57,f58",
@@ -50,7 +93,10 @@ def fetch_market_totals():
         f"{EASTMONEY_STOCK_URL}?{urlencode({**params, 'secid': '0.399001'})}",
     ]
 
-    return parse_index_totals([fetch_json(url) for url in urls])
+    try:
+        return parse_index_totals([fetch_json(url) for url in urls])
+    except Exception:
+        return fetch_tencent_market_totals()
 
 
 def _to_price(raw_price):
