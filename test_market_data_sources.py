@@ -1,6 +1,11 @@
 import unittest
 
-from market_data_sources import parse_index_totals, parse_limit_pool, parse_tencent_index_totals
+from market_data_sources import (
+    parse_historical_index_totals,
+    parse_index_totals,
+    parse_limit_pool,
+    parse_tencent_index_totals,
+)
 
 
 class MarketDataSourceTests(unittest.TestCase):
@@ -70,6 +75,66 @@ class MarketDataSourceTests(unittest.TestCase):
 
         self.assertEqual(totals["volume"], 1192929545)
         self.assertEqual(totals["amount"], 2581157312516)
+
+    def test_parse_historical_index_totals_sums_same_trade_date(self):
+        rows = parse_historical_index_totals([
+            {
+                "data": {
+                    "code": "000001",
+                    "klines": [
+                        "2026-07-06,4059.19,4041.24,4060.07,4005.41,590364903,1432112821099.20",
+                        "2026-07-07,4019.49,3990.24,4028.51,3971.71,514453091,1196371087894.40",
+                    ],
+                }
+            },
+            {
+                "data": {
+                    "code": "399001",
+                    "klines": [
+                        "2026-07-06,15677.93,15416.80,15749.36,15288.49,768142319,1659011641303.46,2.95",
+                        "2026-07-07,15345.39,15225.11,15461.37,15081.92,678476454,1384786224621.83,2.46",
+                    ],
+                }
+            },
+        ])
+
+        self.assertEqual(
+            rows,
+            [
+                {
+                    "date": "2026-07-06",
+                    "volume": 1358507222,
+                    "amount": 3091124462402.66,
+                },
+                {
+                    "date": "2026-07-07",
+                    "volume": 1192929545,
+                    "amount": 2581157312516.23,
+                },
+            ],
+        )
+
+    def test_parse_historical_index_totals_rejects_partial_index_rows(self):
+        with self.assertRaisesRegex(ValueError, "Incomplete historical market totals"):
+            parse_historical_index_totals([
+                {
+                    "data": {
+                        "code": "000001",
+                        "klines": [
+                            "2026-07-06,4059.19,4041.24,4060.07,4005.41,590364903,1432112821099.20",
+                            "2026-07-07,4019.49,3990.24,4028.51,3971.71,514453091,1196371087894.40",
+                        ],
+                    }
+                },
+                {
+                    "data": {
+                        "code": "399001",
+                        "klines": [
+                            "2026-07-07,15345.39,15225.11,15461.37,15081.92,678476454,1384786224621.83",
+                        ],
+                    }
+                },
+            ])
 
 
 if __name__ == "__main__":

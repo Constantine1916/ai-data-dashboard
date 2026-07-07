@@ -1,9 +1,11 @@
 import json
+import time
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
 
 EASTMONEY_STOCK_URL = "https://push2.eastmoney.com/api/qt/stock/get"
+EASTMONEY_KLINE_URL = "https://push2his.eastmoney.com/api/qt/stock/kline/get"
 EASTMONEY_LIMIT_UP_URL = "https://push2ex.eastmoney.com/getTopicZTPool"
 EASTMONEY_LIMIT_DOWN_URL = "https://push2ex.eastmoney.com/getTopicDTPool"
 TENCENT_INDEX_URL = "https://qt.gtimg.cn/q=sh000001,sz399001"
@@ -19,6 +21,18 @@ def fetch_json(url, timeout=20):
     request = Request(url, headers=REQUEST_HEADERS)
     with urlopen(request, timeout=timeout) as response:
         return json.loads(response.read().decode("utf-8"))
+
+
+def fetch_json_with_retry(url, label="数据", max_retries=3, timeout=20):
+    last_error = None
+    for attempt in range(1, max_retries + 1):
+        try:
+            return fetch_json(url, timeout=timeout)
+        except Exception as exc:
+            last_error = exc
+            if attempt < max_retries:
+                time.sleep(attempt)
+    raise last_error
 
 
 def fetch_text(url, timeout=20, encoding="utf-8"):
@@ -80,6 +94,41 @@ def parse_tencent_index_totals(text):
     }
 
 
+def parse_historical_index_totals(payloads):
+    totals_by_date = {}
+    sources_by_date = {}
+
+    for source_index, payload in enumerate(payloads):
+        data = payload.get("data") or {}
+        for line in data.get("klines") or []:
+            fields = line.split(",")
+            if len(fields) < 7:
+                continue
+
+            date = fields[0]
+            volume = int(float(fields[5] or 0))
+            amount = float(fields[6] or 0)
+
+            current = totals_by_date.setdefault(date, {"date": date, "volume": 0, "amount": 0.0})
+            current["volume"] += volume
+            current["amount"] += amount
+            sources_by_date.setdefault(date, set()).add(source_index)
+
+    rows = [row for _, row in sorted(totals_by_date.items())]
+
+    if not rows:
+        raise ValueError("EastMoney historical kline payload did not contain rows")
+
+    for row in rows:
+        if len(sources_by_date.get(row["date"], set())) != len(payloads):
+            raise ValueError(f"Incomplete historical market totals for {row['date']}")
+        if row["volume"] <= 0 or row["amount"] <= 0:
+            raise ValueError(f"Invalid historical market totals for {row['date']}")
+        row["amount"] = round(row["amount"], 2)
+
+    return rows
+
+
 def fetch_tencent_market_totals():
     return parse_tencent_index_totals(fetch_text(TENCENT_INDEX_URL, encoding="gbk"))
 
@@ -94,9 +143,26 @@ def fetch_market_totals():
     ]
 
     try:
-        return parse_index_totals([fetch_json(url) for url in urls])
+        return parse_index_totals([fetch_json_with_retry(url, "实时成交") for url in urls])
     except Exception:
         return fetch_tencent_market_totals()
+
+
+def fetch_historical_market_totals(start_date, end_date):
+    params = {
+        "fields1": "f1,f2,f3,f4,f5,f6",
+        "fields2": "f51,f52,f53,f54,f55,f56,f57",
+        "klt": "101",
+        "fqt": "0",
+        "beg": start_date.replace("-", ""),
+        "end": end_date.replace("-", ""),
+    }
+    urls = [
+        f"{EASTMONEY_KLINE_URL}?{urlencode({**params, 'secid': '1.000001'})}",
+        f"{EASTMONEY_KLINE_URL}?{urlencode({**params, 'secid': '0.399001'})}",
+    ]
+
+    return parse_historical_index_totals([fetch_json_with_retry(url, "历史成交") for url in urls])
 
 
 def _to_price(raw_price):
@@ -142,7 +208,7 @@ def fetch_limit_up_pool(date):
         "sort": "fbt:asc",
         "date": date,
     }
-    payload = fetch_json(f"{EASTMONEY_LIMIT_UP_URL}?{urlencode(params)}")
+    payload = fetch_json_with_retry(f"{EASTMONEY_LIMIT_UP_URL}?{urlencode(params)}", "涨停池")
     return parse_limit_pool(payload, limit_day_field="lbc")
 
 
@@ -155,5 +221,5 @@ def fetch_limit_down_pool(date):
         "sort": "fund:asc",
         "date": date,
     }
-    payload = fetch_json(f"{EASTMONEY_LIMIT_DOWN_URL}?{urlencode(params)}")
+    payload = fetch_json_with_retry(f"{EASTMONEY_LIMIT_DOWN_URL}?{urlencode(params)}", "跌停池")
     return parse_limit_pool(payload, limit_day_field="days")
