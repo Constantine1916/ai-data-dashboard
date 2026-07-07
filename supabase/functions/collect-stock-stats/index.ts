@@ -296,22 +296,32 @@ async function saveConcepts(date: string, concepts: ConceptData[]) {
  * 判断是否为A股交易日期
  */
 async function isTradingDay(dateStr: string): Promise<boolean> {
+  const date = new Date(`${dateStr}T00:00:00+08:00`)
+  const day = date.getDay()
+  if (day === 0 || day === 6) {
+    return false
+  }
+
   const url = `https://push2.eastmoney.com/api/qt/stock/get?secid=1.000001&fields=f43,f57,f58`
   
   try {
     const data = await fetchJsonWithRetry(url, '交易日判断')
     
-    // 如果 data 是空对象，说明是非交易日
+    // 工作日不因为行情接口短暂异常而跳过；后续成交额校验会阻止写入坏数据。
     const marketData = data?.data
     if (!marketData || Object.keys(marketData).length === 0) {
-      return false
+      console.log(`交易日判断接口未返回行情，按工作日继续采集: ${dateStr}`)
+      return true
     }
     
     const price = marketData?.f43
-    return price !== '-' && price !== undefined && price !== null
+    if (price === '-' || price === undefined || price === null) {
+      console.log(`交易日判断接口价格无效，按工作日继续采集: ${dateStr}`)
+    }
+    return true
   } catch (e) {
     console.log(`判断交易日失败: ${e}`)
-    return false
+    return true
   }
 }
 
