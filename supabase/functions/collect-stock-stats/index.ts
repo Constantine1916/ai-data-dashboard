@@ -33,7 +33,9 @@ interface LimitDownStock {
 }
 
 interface ConceptData {
+  code: string
   name: string
+  closePrice: number
   percent: number
   upCount: number
   downCount: number
@@ -44,25 +46,55 @@ interface DailyStats {
   date: string
   limitUpCount: number
   limitDownCount: number
+  totalVolume: number
   totalAmount: number
   maxContinuousLimit: number
 }
 
+interface MarketTotals {
+  totalVolume: number
+  totalAmount: number
+}
+
+async function fetchJson(url: string) {
+  const res = await fetch(url, {
+    headers: {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+      'Accept': 'application/json,text/plain,*/*',
+      'Referer': 'https://quote.eastmoney.com/',
+    },
+  })
+
+  if (!res.ok) {
+    throw new Error(`HTTP ${res.status}`)
+  }
+
+  return await res.json()
+}
+
 // 获取涨停股票
 async function fetchLimitUp(date: string): Promise<LimitUpStock[]> {
-  const url = `https://push2.eastmoney.com/api/qt/stock/ztlist/get?pn=1&pz=500&po=1&np=1&fltt=2&invt=2&fid=f3&fs=m:0+t:6,m:0+t:80,m:1+t:2,m:1+t:23&fields=f12,f14,f2,f3,f62,f8`
+  const params = new URLSearchParams({
+    ut: '7eea3edcaed734bea9cbfc24409ed989',
+    dpt: 'wz.ztzt',
+    Pageindex: '0',
+    pagesize: '10000',
+    sort: 'fbt:asc',
+    date,
+  })
+  const url = `https://push2ex.eastmoney.com/getTopicZTPool?${params}`
   
   try {
-    const res = await fetch(url)
-    const data = await res.json()
+    const data = await fetchJson(url)
     
-    if (data.data?.diff) {
-      return data.data.diff.map((s: any) => ({
-        code: s.f12,
-        name: s.f14,
-        percent: s.f3,
-        price: s.f2,
-        limitDays: s.f62 || 0
+    if (data.data?.pool) {
+      return data.data.pool.map((s: any) => ({
+        code: s.c,
+        name: s.n,
+        percent: s.zdp,
+        price: (s.p || 0) / 1000,
+        limitDays: s.lbc || 0,
+        industry: s.hybk,
       }))
     }
     return []
@@ -74,22 +106,28 @@ async function fetchLimitUp(date: string): Promise<LimitUpStock[]> {
 
 // 获取跌停股票
 async function fetchLimitDown(date: string): Promise<LimitDownStock[]> {
-  const url = `https://push2.eastmoney.com/api/qt/stock/ztlist/get?pn=1&pz=500&po=1&np=1&fltt=2&invt=2&fid=f3&fs=m:0+t:6,m:0+t:80,m:1+t:2,m:1+t:23&fields=f12,f14,f2,f3,f62,f8`
+  const params = new URLSearchParams({
+    ut: '7eea3edcaed734bea9cbfc24409ed989',
+    dpt: 'wz.ztzt',
+    Pageindex: '0',
+    pagesize: '10000',
+    sort: 'fund:asc',
+    date,
+  })
+  const url = `https://push2ex.eastmoney.com/getTopicDTPool?${params}`
   
   try {
-    const res = await fetch(url)
-    const data = await res.json()
+    const data = await fetchJson(url)
     
-    if (data.data?.diff) {
-      return data.data.diff
-        .filter((s: any) => s.f3 <= -9.9)
-        .map((s: any) => ({
-          code: s.f12,
-          name: s.f14,
-          percent: s.f3,
-          price: s.f2,
-          limitDays: Math.abs(s.f62 || 0)
-        }))
+    if (data.data?.pool) {
+      return data.data.pool.map((s: any) => ({
+        code: s.c,
+        name: s.n,
+        percent: s.zdp,
+        price: (s.p || 0) / 1000,
+        limitDays: s.days || 0,
+        industry: s.hybk,
+      }))
     }
     return []
   } catch (e) {
@@ -98,27 +136,27 @@ async function fetchLimitDown(date: string): Promise<LimitDownStock[]> {
   }
 }
 
-// 获取沪深两市总成交额
-async function fetchMarketAmount(date: string): Promise<number> {
-  const dateStr = date.replace(/-/g, '')
-  
+// 获取沪深两市总成交额和成交量
+async function fetchMarketTotals(): Promise<MarketTotals> {
   try {
-    // 并行获取上海和深圳的成交数据
+    const fields = 'f43,f47,f48,f57,f58'
     const [shRes, szRes] = await Promise.all([
-      fetch(`https://push2.eastmoney.com/api/qt/stock/get?secid=1.000001&fields=f2,f3,f6`),
-      fetch(`https://push2.eastmoney.com/api/qt/stock/get?secid=0.399001&fields=f2,f3,f6`)
+      fetchJson(`https://push2.eastmoney.com/api/qt/stock/get?secid=1.000001&fields=${fields}`),
+      fetchJson(`https://push2.eastmoney.com/api/qt/stock/get?secid=0.399001&fields=${fields}`)
     ])
     
-    const shData = await shRes.json()
-    const szData = await szRes.json()
+    const shAmount = Number(shRes.data?.f48 || 0)
+    const szAmount = Number(szRes.data?.f48 || 0)
+    const shVolume = Number(shRes.data?.f47 || 0)
+    const szVolume = Number(szRes.data?.f47 || 0)
     
-    const shAmount = shData.data?.f6 || 0  // 成交额（元）
-    const szAmount = szData.data?.f6 || 0
-    
-    return shAmount + szAmount
+    return {
+      totalVolume: shVolume + szVolume,
+      totalAmount: shAmount + szAmount,
+    }
   } catch (e) {
     console.log(`成交额API错误: ${e}`)
-    return 0
+    return { totalVolume: 0, totalAmount: 0 }
   }
 }
 
@@ -132,7 +170,9 @@ async function fetchConceptRank(): Promise<ConceptData[]> {
     
     if (data.data?.diff) {
       return data.data.diff.map((s: any) => ({
+        code: s.f12,
         name: s.f14,
+        closePrice: s.f2,
         percent: s.f3,
         upCount: 0,
         downCount: 0,
@@ -154,7 +194,7 @@ async function saveDailyStats(stats: DailyStats) {
       stat_date: stats.date,
       limit_up_count: stats.limitUpCount,
       limit_down_count: stats.limitDownCount,
-      total_volume: '0',
+      total_volume: String(stats.totalVolume),
       total_amount: String(stats.totalAmount),
       max_continuous_limit: stats.maxContinuousLimit,
       updated_at: new Date().toISOString(),
@@ -197,7 +237,7 @@ async function saveLimitDownStocks(date: string, stocks: LimitDownStock[]) {
 
 // 保存题材数据
 async function saveConcepts(date: string, concepts: ConceptData[]) {
-  const { error } = await supabase
+  const { error: conceptError } = await supabase
     .from('concept_rankings')
     .upsert({
       stat_date: date,
@@ -207,19 +247,36 @@ async function saveConcepts(date: string, concepts: ConceptData[]) {
     .select()
     .single()
   
-  if (error) throw error
+  if (conceptError) throw conceptError
+
+  if (concepts.length === 0) return
+
+  await supabase.from('topic_rankings').delete().eq('stat_date', date)
+
+  const topicRows = concepts.map((concept, index) => ({
+    stat_date: date,
+    topic_code: concept.code,
+    topic_name: concept.name,
+    change_percent: concept.percent,
+    close_price: concept.closePrice,
+    rank: index + 1,
+  }))
+
+  const { error: topicError } = await supabase
+    .from('topic_rankings')
+    .insert(topicRows)
+
+  if (topicError) throw topicError
 }
 
 /**
  * 判断是否为A股交易日期
  */
 async function isTradingDay(dateStr: string): Promise<boolean> {
-  const dateFormatted = dateStr.replace(/-/g, '')
-  const url = `https://push2.eastmoney.com/api/qt/stock/get?secid=1.000001&fields=f2,f3,f6`
+  const url = `https://push2.eastmoney.com/api/qt/stock/get?secid=1.000001&fields=f43,f57,f58`
   
   try {
-    const res = await fetch(url)
-    const data = await res.json()
+    const data = await fetchJson(url)
     
     // 如果 data 是空对象，说明是非交易日
     const marketData = data?.data
@@ -227,7 +284,7 @@ async function isTradingDay(dateStr: string): Promise<boolean> {
       return false
     }
     
-    const price = marketData?.f2
+    const price = marketData?.f43
     return price !== '-' && price !== undefined && price !== null
   } catch (e) {
     console.log(`判断交易日失败: ${e}`)
@@ -270,8 +327,8 @@ serve(async (req: Request) => {
       fetchConceptRank()
     ])
     
-    // 获取市场总成交额
-    const totalAmount = await fetchMarketAmount(today)
+    // 获取市场总成交额和成交量
+    const marketTotals = await fetchMarketTotals()
     
     const maxLimit = limitUp.length > 0 
       ? Math.max(...limitUp.map((s: any) => s.limitDays || 0))
@@ -282,7 +339,8 @@ serve(async (req: Request) => {
       date: today,
       limitUpCount: limitUp.length,
       limitDownCount: limitDown.length,
-      totalAmount: totalAmount,
+      totalVolume: marketTotals.totalVolume,
+      totalAmount: marketTotals.totalAmount,
       maxContinuousLimit: maxLimit
     })
     
@@ -290,7 +348,7 @@ serve(async (req: Request) => {
     await saveLimitDownStocks(today, limitDown)
     await saveConcepts(today, concepts)
     
-    console.log(`今日: 涨停${limitUp.length}只, 跌停${limitDown.length}只, 成交额${(totalAmount/1e8).toFixed(0)}亿`)
+    console.log(`今日: 涨停${limitUp.length}只, 跌停${limitDown.length}只, 成交额${(marketTotals.totalAmount/1e8).toFixed(0)}亿`)
     
     // 采集历史数据
     const historyResults = []
@@ -315,14 +373,15 @@ serve(async (req: Request) => {
           fetchLimitDown(dateFormatted)
         ])
         
-        const historyAmount = await fetchMarketAmount(dateStr)
+        const historyTotals = await fetchMarketTotals()
         const maxL = zt.length > 0 ? Math.max(...zt.map((s: any) => s.limitDays || 0)) : 0
         
         await saveDailyStats({
           date: dateStr,
           limitUpCount: zt.length,
           limitDownCount: dt.length,
-          totalAmount: historyAmount,
+          totalVolume: historyTotals.totalVolume,
+          totalAmount: historyTotals.totalAmount,
           maxContinuousLimit: maxL
         })
         
@@ -330,10 +389,10 @@ serve(async (req: Request) => {
           date: dateStr,
           limitUp: zt.length,
           limitDown: dt.length,
-          amount: historyAmount
+          amount: historyTotals.totalAmount
         })
         
-        console.log(`  ${dateStr}: 涨停${zt.length}只, 跌停${dt.length}只, 成交额${(historyAmount/1e8).toFixed(0)}亿`)
+        console.log(`  ${dateStr}: 涨停${zt.length}只, 跌停${dt.length}只, 成交额${(historyTotals.totalAmount/1e8).toFixed(0)}亿`)
       } catch (e) {
         console.log(`${dateStr}采集失败: ${e}`)
       }
@@ -350,7 +409,8 @@ serve(async (req: Request) => {
           date: today,
           limitUpCount: limitUp.length,
           limitDownCount: limitDown.length,
-          totalAmount: totalAmount,
+          totalVolume: marketTotals.totalVolume,
+          totalAmount: marketTotals.totalAmount,
           maxContinuousLimit: maxLimit,
           limitUp: limitUp.slice(0, 30),
           limitDown: limitDown.slice(0, 30)

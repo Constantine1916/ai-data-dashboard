@@ -1,13 +1,36 @@
 #!/usr/bin/env python3
 import akshare as ak
-import pandas as pd
 from datetime import datetime, timedelta
 import sys
+import time
+from market_data_sources import (
+    fetch_limit_down_pool,
+    fetch_limit_up_pool,
+    fetch_market_totals,
+)
+
+# 重试配置
+MAX_RETRIES = 3
+RETRY_DELAY = 60  # 1分钟
 
 def get_date_str(days_ago=0):
     """获取日期字符串，格式为 YYYYMMDD"""
     d = datetime.now() - timedelta(days=days_ago)
     return d.strftime('%Y%m%d')
+
+def retry_get(func, *args, name="数据", **kwargs):
+    """带重试的数据获取函数"""
+    for attempt in range(1, MAX_RETRIES + 1):
+        try:
+            return func(*args, **kwargs)
+        except Exception as e:
+            if attempt < MAX_RETRIES:
+                print(f"⚠️ {name}获取失败 (尝试 {attempt}/{MAX_RETRIES}): {e}", file=sys.stderr)
+                print(f"⏳ 等待 {RETRY_DELAY} 秒后重试...", file=sys.stderr)
+                time.sleep(RETRY_DELAY)
+            else:
+                print(f"❌ {name}获取失败 (已重试 {MAX_RETRIES} 次): {e}", file=sys.stderr)
+                raise
 
 date_str = get_date_str()
 print(f'获取日期: {date_str}', file=sys.stderr)
@@ -20,41 +43,31 @@ limit_down = 0
 max_continuous_limit = 0
 topics = []
 
-# ============ 上海成交数据 ============
+# ============ 沪深成交数据 ============
 try:
-    sse = ak.stock_sse_deal_daily(date=date_str)
-    sh_amount = float(sse.loc[sse['单日情况'] == '成交金额', '股票'].values[0]) * 100000000
-    sh_volume = float(sse.loc[sse['单日情况'] == '成交量', '股票'].values[0]) * 100000000
-    total_volume = sh_volume
-    print(f'上海成交: {sh_amount/1e8:.2f}亿, {sh_volume/1e8:.2f}亿手', file=sys.stderr)
+    market_totals = retry_get(fetch_market_totals, name="沪深成交")
+    total_amount = market_totals["amount"]
+    total_volume = market_totals["volume"]
+    print(
+        f'沪深成交: {total_amount/1e8:.2f}亿, 成交量 {total_volume:.0f}',
+        file=sys.stderr
+    )
 except Exception as e:
-    print(f'上海成交获取失败: {e}', file=sys.stderr)
-
-# ============ 深圳成交数据 ============
-try:
-    szse = ak.stock_szse_summary(date=date_str)
-    sz_stock = szse[szse['证券类别'] == '股票']
-    sz_amount = float(sz_stock['成交金额'].values[0])
-    total_amount = sh_amount + sz_amount if 'sh_amount' in dir() else sz_amount
-    print(f'深圳成交: {sz_amount/1e8:.2f}亿', file=sys.stderr)
-except Exception as e:
-    print(f'深圳成交获取失败: {e}', file=sys.stderr)
-    total_amount = sh_amount if 'sh_amount' in dir() else 0
+    print(f'沪深成交获取失败: {e}', file=sys.stderr)
 
 # ============ 涨停池数据 ============
 try:
-    zt = ak.stock_zt_pool_em(date=date_str)
-    limit_up = len(zt)
-    if len(zt) > 0 and '连板数' in zt.columns:
-        max_continuous_limit = int(zt['连板数'].max())
+    zt = retry_get(fetch_limit_up_pool, date_str, name="涨停池")
+    limit_up = zt["count"]
+    max_continuous_limit = zt["max_limit_days"]
     print(f'涨停池 {date_str}: {limit_up} 条, 最高连板: {max_continuous_limit}', file=sys.stderr)
 except Exception as e:
     print(f'涨停池获取失败: {e}', file=sys.stderr)
 
 # ============ 跌停池数据 ============
 try:
-    dt = ak.stock_zt_pool_dtgc_em(date=date_str)
-    limit_down = len(dt)
+    dt = retry_get(fetch_limit_down_pool, date_str, name="跌停池")
+    limit_down = dt["count"]
     print(f'跌停池 {date_str}: {limit_down} 条', file=sys.stderr)
 except Exception as e:
     print(f'跌停池获取失败: {e}', file=sys.stderr)
@@ -62,7 +75,7 @@ except Exception as e:
 # ============ 题材涨幅数据（概念板块-资金流） ============
 try:
     print('正在获取概念板块数据...', file=sys.stderr)
-    df = ak.stock_fund_flow_concept()
+    df = retry_get(ak.stock_fund_flow_concept, name="概念板块")
     print(f'获取到 {len(df)} 条概念板块数据', file=sys.stderr)
     
     # 这个API已经按资金流排序了，直接取前10
