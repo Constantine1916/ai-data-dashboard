@@ -44,7 +44,7 @@ function DashboardContent() {
               <div>
                 <h1 className="text-2xl font-bold text-gray-900">📊 A股数据看板</h1>
                 <p className="text-sm text-gray-500 mt-1">
-                  欢迎回来，{user?.name} · 数据每日 15:30 自动更新
+                  欢迎回来，{user?.name} · 数据每日 17:00 自动更新
                 </p>
               </div>
               <Button onClick={logout} variant="outline">

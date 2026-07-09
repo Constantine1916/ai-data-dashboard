@@ -74,7 +74,7 @@ export function MarketOverview({ todayStats: initialStats }: MarketOverviewProps
       <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6">
         <p className="text-yellow-800">⚠️ 今日数据尚未收集</p>
         <p className="text-sm text-yellow-600 mt-2">
-          数据将在每天 15:30 后自动更新
+          数据将在每天 17:00 后自动更新
         </p>
       </div>
     )
