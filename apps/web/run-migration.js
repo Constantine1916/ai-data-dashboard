@@ -1,8 +1,13 @@
 const { Pool } = require('pg');
 const fs = require('fs');
+require('dotenv').config({ path: '.env.local' });
+
+if (!process.env.DATABASE_URL) {
+  throw new Error('DATABASE_URL 环境变量必须设置');
+}
 
 const pool = new Pool({
-  connectionString: 'postgresql://postgres:%2F***REMOVED***@db.ekbjjkcuqqskraubogzl.supabase.co:5432/postgres',
+  connectionString: process.env.DATABASE_URL,
   ssl: { rejectUnauthorized: false }
 });
 

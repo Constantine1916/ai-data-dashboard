@@ -3,6 +3,10 @@ import { createRouteHandler } from '@/lib/api/route-handler'
 import { createSuccessResponse, createErrorResponse } from '@/lib/shared'
 import { MarketStatsService } from '@/lib/services/market-stats'
 
+// 强制动态渲染，禁止任何缓存
+export const dynamic = 'force-dynamic'
+export const revalidate = 0
+
 /**
  * GET /api/stats/topics/weekly?limit=20
  * 获取一周内题材涨幅排行

@@ -1,5 +1,9 @@
-const SUPABASE_PROJECT_ID = 'ekbjjkcuqqskraubogzl';
-const ACCESS_TOKEN = '***REMOVED***';
+const SUPABASE_PROJECT_ID = process.env.SUPABASE_PROJECT_ID || process.env.SUPABASE_PROJECT_REF;
+const ACCESS_TOKEN = process.env.SUPABASE_ACCESS_TOKEN;
+
+if (!SUPABASE_PROJECT_ID || !ACCESS_TOKEN) {
+  throw new Error('SUPABASE_PROJECT_ID/SUPABASE_PROJECT_REF 和 SUPABASE_ACCESS_TOKEN 环境变量必须设置');
+}
 
 async function fixSchema() {
   console.log('检查并修复表结构...\n');

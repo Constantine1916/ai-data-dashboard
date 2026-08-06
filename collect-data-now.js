@@ -5,16 +5,22 @@
  */
 
 const { createClient } = require('@supabase/supabase-js');
+const path = require('path');
+require('dotenv').config({ path: path.join(__dirname, 'apps/web/.env.local') });
 
-const supabase = createClient(
-  'https://ekbjjkcuqqskraubogzl.supabase.co',
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVrYmpqa2N1cXFza3JhdWJvZ3psIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2OTM0NzMzNywiZXhwIjoyMDg0OTIzMzM3fQ.fgCOW2kyJHIQe2ombEW_GMoEWRukO_yix2-7zIktDQA'
-);
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+if (!supabaseUrl || !supabaseServiceRoleKey) {
+  throw new Error('NEXT_PUBLIC_SUPABASE_URL 和 SUPABASE_SERVICE_ROLE_KEY 环境变量必须设置');
+}
+
+const supabase = createClient(supabaseUrl, supabaseServiceRoleKey);
 
 // 最大重试次数
 const MAX_RETRIES = 3;
-// 重试间隔（毫秒）
-const RETRY_DELAY = 30000;
+// 重试间隔（毫秒）= 1分钟
+const RETRY_DELAY = 60000;
 // 17:00 北京时间补采时间
 const SUPPLEMENTARY_HOUR = 17;
 const SUPPLEMENTARY_MINUTE = 0;

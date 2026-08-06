@@ -13,7 +13,7 @@
     "start": "deno run -A --watch=static/,routes/ dev.ts"
   },
   "env": {
-    "SUPABASE_URL": "https://ekbjjkcuqqskraubogzl.supabase.co",
+    "SUPABASE_URL": "https://rjmzboildrqjpcshjuli.supabase.co",
     "SUPABASE_SERVICE_ROLE_KEY": "***"
   }
 }
